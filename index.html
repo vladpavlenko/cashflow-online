@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="CashFlow Online">
+  <meta name="theme-color" content="#08090f">
+  <title>CashFlow Online</title>
+  <link rel="manifest" href="manifest.json">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="lang.js"></script>
+  <script src="engine.js"></script>
+  <script src="cards.js"></script>
+  <script src="board.js"></script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAOjnui8wVleQ-pNbGculhezKHrnEgLQcw",
+      authDomain: "cashflow-ua.firebaseapp.com",
+      databaseURL: "https://cashflow-ua-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "cashflow-ua",
+      storageBucket: "cashflow-ua.firebasestorage.app",
+      messagingSenderId: "883578570835",
+      appId: "1:883578570835:web:dc441ce423516663575ea6"
+    };
+
+    let _db = null;
+    let _roomCode = null;
+    let _playerKey = null;
+
+    window._fbReady = false;
+
+    try {
+      const app = initializeApp(firebaseConfig);
+      _db = getDatabase(app);
+    } catch(e) {
+      console.warn('Firebase init failed (offline mode):', e.message);
+    }
+
+    window._fbInit = (roomCode, playerName) => {
+      if (!_db) { window._fbReady = false; return; }
+      _roomCode  = roomCode.toUpperCase().trim();
+      _playerKey = playerName.trim().replace(/[.#$\/\[\]]/g, '_');
+      window._fbReady = true;
+      console.log('Firebase connected:', _roomCode, '/', _playerKey);
+    };
+
+    window._fbSync = async (payload) => {
+      if (!window._fbReady || !_db) return;
+      try {
+        await set(ref(_db, `rooms/${_roomCode}/players/${_playerKey}`), {
+          ...payload,
+          _ts: Date.now(),
+          _online: true,
+        });
+      } catch(e) {
+        console.warn('Sync error:', e.message);
+      }
+    };
+
+    window._fbOffline = async () => {
+      if (!window._fbReady || !_db) return;
+      try { await set(ref(_db, `rooms/${_roomCode}/players/${_playerKey}/_online`), false); }
+      catch(e) {}
+    };
+
+    window.addEventListener('beforeunload', () => window._fbOffline?.());
+
+    // Listen for state updates pushed from server/GM
+    window._fbListenState = (roomCode, playerKey, callback) => {
+      if (!_db) return;
+      const r = ref(_db, `rooms/${roomCode}/players/${playerKey}`);
+      onValue(r, snap => {
+        const data = snap.val();
+        if (data) callback(data);
+      });
+    };
+  </script>
+
+  <style>
+    :root {
+      --bg:        #08090f;
+      --surface:   #111420;
+      --elevated:  #1a1e30;
+      --border:    #252840;
+      --gold:      #f5a623;
+      --gold-dim:  rgba(245,166,35,0.13);
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --blue:      #60a5fa;
+      --text:      #e8ecf5;
+      --sub:       #8892aa;
+      --display:   'Cormorant Garamond', serif;
+      --mono:      'IBM Plex Mono', monospace;
+      --body:      'DM Sans', sans-serif;
+      --glass-bg:     rgba(255,255,255,0.04);
+      --glass-border: rgba(255,255,255,0.08);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: -webkit-fill-available; }
+    body {
+      background: #08090f;
+      background-image:
+        radial-gradient(ellipse at 20% 20%, rgba(30,40,80,0.6) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 80%, rgba(20,30,60,0.5) 0%, transparent 60%);
+      background-attachment: fixed;
+      color: var(--text);
+      font-family: var(--body);
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #app {
+      text-align: center;
+      padding: 40px 24px;
+    }
+    .logo {
+      font-family: var(--display);
+      font-size: 52px;
+      font-weight: 700;
+      color: var(--gold);
+      letter-spacing: 3px;
+      line-height: 1;
+    }
+    .badge {
+      display: inline-block;
+      margin-top: 10px;
+      background: rgba(96,165,250,0.1);
+      border: 1px solid rgba(96,165,250,0.3);
+      border-radius: 8px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--blue);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .wip {
+      margin-top: 32px;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 24px 28px;
+      font-size: 15px;
+      color: var(--sub);
+      line-height: 1.6;
+      max-width: 360px;
+    }
+    .wip strong { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div class="logo">CashFlow</div>
+  <div class="badge">Online v2 — Клієнт гравця</div>
+  <div class="wip">
+    <strong>В розробці</strong><br>
+    Гравець не може редагувати стан напряму.<br>
+    Всі зміни відбуваються через Firebase від GM.
+  </div>
+</div>
+
+<script>
+// Базовий стан гравця
+let S = {
+  playerName: '',
+  roomCode: '',
+  cash: 1000,
+  round: 1,
+  position: 0,
+  educations: [],
+  incomes: [],
+  exp: {
+    housingLabel: 'Гуртожиток',
+    housingBase: 0,
+    housingType: 'self',
+    food: 120,
+    comm: 10,
+    transport: 30,
+    hasWife: false,
+    wifeAmt: 0,
+    kids: 0,
+    kidCost: 100,
+  },
+  loans: { bankAmt: 0, bankRem: 0, microAmt: 0, microRem: 0 },
+  courses: [],
+  trainings: [],
+  deals: [],
+  deposit: 0,
+  txLog: [],
+};
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
+}
+</script>
+</body>
+</html>

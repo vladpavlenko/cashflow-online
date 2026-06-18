@@ -1,0 +1,977 @@
+<!-- CASHFLOW ONLINE v2 — GM панель -->
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#08090f">
+  <title>CashFlow Online GM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="lang.js"></script>
+  <script src="engine.js"></script>
+  <script src="cards.js"></script>
+  <script src="board.js"></script>
+
+  <script type="module">
+    import { initializeApp }  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAOjnui8wVleQ-pNbGculhezKHrnEgLQcw",
+      authDomain: "cashflow-ua.firebaseapp.com",
+      databaseURL: "https://cashflow-ua-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "cashflow-ua",
+      storageBucket: "cashflow-ua.firebasestorage.app",
+      messagingSenderId: "883578570835",
+      appId: "1:883578570835:web:dc441ce423516663575ea6"
+    };
+
+    let _app, _db, _unsubscribe = null;
+
+    window._gmConnect = (roomCode) => {
+      if (!_app) {
+        _app = initializeApp(firebaseConfig);
+        _db  = getDatabase(_app);
+      }
+      if (_unsubscribe) _unsubscribe();
+      const r = ref(_db, `rooms/${roomCode.toUpperCase()}/players`);
+      _unsubscribe = onValue(r, snap => {
+        const data = snap.val() || {};
+        window._gmOnUpdate(data);
+      }, err => {
+        console.error('Firebase error:', err);
+        window._gmOnError(err.message);
+      });
+    };
+
+    window._gmCreateRoom = async (roomCode) => {
+      if (!_app) {
+        _app = initializeApp(firebaseConfig);
+        _db  = getDatabase(_app);
+      }
+      try {
+        await set(ref(_db, `rooms/${roomCode.toUpperCase()}/_created`), Date.now());
+        return true;
+      } catch(e) { return false; }
+    };
+
+    window._gmRemovePlayer = async (roomCode, playerKey) => {
+      try {
+        await remove(ref(_db, `rooms/${roomCode}/players/${playerKey}`));
+        return true;
+      } catch(e) { console.error(e); return false; }
+    };
+
+    window._gmClearRoom = async (roomCode) => {
+      try {
+        await remove(ref(_db, `rooms/${roomCode}/players`));
+        return true;
+      } catch(e) { console.error(e); return false; }
+    };
+
+    window._gmDeleteRoom = async (roomCode) => {
+      try {
+        await remove(ref(_db, `rooms/${roomCode}`));
+        return true;
+      } catch(e) { console.error(e); return false; }
+    };
+
+    window._gmListenApprovals = (roomCode, callback) => {
+      if (!_db) return;
+      const r = ref(_db, `rooms/${roomCode.toUpperCase()}/approvals`);
+      onValue(r, snap => { callback(snap.val() || {}); });
+    };
+
+    window._gmRespondApproval = async (roomCode, playerKey, status, amount) => {
+      if (!_db) return;
+      try {
+        await set(ref(_db, `rooms/${roomCode}/approvals/${playerKey}`), {
+          status, amount, ts: Date.now(),
+        });
+      } catch(e) { console.error('Approval response error:', e); }
+    };
+  </script>
+
+  <style>
+    :root {
+      --bg:        #08090f;
+      --surface:   #111420;
+      --elevated:  #1a1e30;
+      --border:    #252840;
+      --gold:      #f5a623;
+      --gold-dim:  rgba(245,166,35,0.13);
+      --green:     #22c55e;
+      --green-dim: rgba(34,197,94,0.12);
+      --red:       #ef4444;
+      --red-dim:   rgba(239,68,68,0.12);
+      --blue:      #60a5fa;
+      --blue-dim:  rgba(96,165,250,0.12);
+      --text:      #e8ecf5;
+      --sub:       #8892aa;
+      --mono:      'IBM Plex Mono', monospace;
+      --display:   'Cormorant Garamond', serif;
+      --body:      'DM Sans', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #08090f; background-image: radial-gradient(ellipse at 15% 15%, rgba(30,40,90,0.55) 0%, transparent 55%), radial-gradient(ellipse at 85% 85%, rgba(20,30,70,0.45) 0%, transparent 55%), radial-gradient(ellipse at 50% 50%, rgba(15,20,50,0.3) 0%, transparent 70%); background-attachment: fixed; color: var(--text); font-family: var(--body); min-height: 100vh; }
+    .mono { font-family: var(--mono); }
+    .green { color: var(--green); } .red { color: var(--red); } .gold { color: var(--gold); } .sub { color: var(--sub); }
+    .hidden { display: none !important; }
+
+    /* ── LOGIN SCREEN ── */
+    #login-screen {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    .logo { font-family: var(--display); font-size: 48px; font-weight: 700; color: var(--gold); letter-spacing: 3px; }
+    .logo-sub { font-size: 11px; letter-spacing: 5px; text-transform: uppercase; color: var(--sub); margin-top: 6px; margin-bottom: 40px; }
+
+    .gm-badge {
+      background: var(--blue-dim);
+      border: 1px solid rgba(96,165,250,0.3);
+      border-radius: 8px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--blue);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+
+    .login-card {
+      width: 100%;
+      background: rgba(17,20,32,0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 28px 24px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 40px rgba(0,0,0,0.5);
+    }
+
+    .login-card h2 { font-family: var(--display); font-size: 26px; font-weight: 700; margin-bottom: 20px; }
+
+    .f-group { margin-bottom: 16px; }
+    .f-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--sub); display: block; margin-bottom: 6px; }
+    .f-input  { width:100%; background:rgba(255,255,255,0.05); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border:1.5px solid rgba(255,255,255,0.1); border-radius:10px; padding:14px 16px; color:var(--gold); font-family:var(--mono); font-size:22px; font-weight:600; letter-spacing:6px; text-align:center; text-transform:uppercase; outline:none; transition:border-color 0.2s; }
+    .f-input::placeholder { color: rgba(245,166,35,0.3); letter-spacing:5px; font-size:18px; }
+    .f-input:focus { border-color: var(--gold); background: rgba(245,166,35,0.04); }
+
+    .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+    .btn-create { flex: 1; background: linear-gradient(180deg, #2d4a8a 0%, #1e3570 100%); border: none; border-radius: 16px; padding: 15px; color: #fff; font-family: var(--body); font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(30,53,112,0.4), inset 0 1px 0 rgba(255,255,255,0.1); transition: transform 0.1s; }
+    .btn-create:active { transform: scale(0.98); }
+    .btn-join   { flex: 1; background: transparent; border: 1.5px solid rgba(59,130,246,0.35); border-radius: 100px; padding: 15px; color: #93c5fd; font-family: var(--body); font-size: 15px; font-weight: 600; cursor: pointer; transition: border-color 0.15s, transform 0.1s; }
+    .btn-join:active { border-color: rgba(59,130,246,0.6); transform: scale(0.98); }
+
+    .hint { font-size: 12px; color: var(--sub); text-align: center; margin-top: 16px; line-height: 1.5; }
+    .hint strong { color: var(--text); }
+
+    /* ── GM DASHBOARD ── */
+    #gm-screen { min-height: 100vh; display: flex; flex-direction: column; }
+
+    .gm-header {
+      position: relative;
+      z-index: 30;
+      background: rgba(17,20,32,0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .gm-header-left { display: flex; align-items: center; gap: 14px; }
+    .gm-title { font-family: var(--display); font-size: 26px; font-weight: 700; color: var(--gold); }
+    .gm-room  { background: var(--blue-dim); border: 1px solid rgba(96,165,250,0.3); border-radius: 20px; padding: 3px 14px; font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--blue); letter-spacing: 2px; }
+
+    .gm-header-right { display: flex; align-items: center; gap: 12px; }
+    .live-pill  { display: flex; align-items: center; gap: 7px; background: var(--green-dim); border: 1px solid rgba(34,197,94,0.3); border-radius: 20px; padding: 4px 12px; font-size: 12px; font-weight: 600; color: var(--green); }
+    .live-dot   { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+    .player-count { font-size: 13px; color: var(--sub); }
+
+    .btn-leave { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 100px; padding: 6px 14px; color: rgba(255,255,255,0.35); font-family: var(--body); font-size: 13px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+    .btn-leave:hover { border-color: rgba(239,68,68,0.3); color: var(--red); }
+
+    /* Summary row */
+    .summary-bar {
+      background: rgba(12,14,25,0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 10px 24px;
+      display: flex;
+      gap: 24px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sum-item { flex-shrink: 0; text-align: center; }
+    .sum-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--sub); }
+    .sum-val  { font-family: var(--mono); font-size: 17px; font-weight: 600; margin-top: 2px; }
+
+    /* Main grid */
+    .gm-content { flex: 1; padding: 20px 24px; overflow-y: auto; }
+
+    .players-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    /* Player card */
+    .player-card {
+      background: rgba(17,20,32,0.6);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.15s;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 24px rgba(0,0,0,0.3);
+    }
+    .player-card:hover {
+      transform: translateY(-1px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .player-card.online  { border-color: rgba(34,197,94,0.2); }
+    .player-card.offline { opacity: 0.55; }
+
+    .pc-header {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.03);
+    }
+    .pc-name   { font-size: 16px; font-weight: 700; }
+    .pc-status { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+    .pc-dot    { width: 7px; height: 7px; border-radius: 50%; background: var(--sub); }
+    .pc-dot.on { background: var(--green); animation: pulse 1.5s infinite; }
+    .pc-dot.on + span { color: var(--green); }
+
+    .pc-meta {
+      padding: 10px 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .pc-badge { background: var(--gold-dim); border: 1px solid rgba(245,166,35,0.3); border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; color: var(--gold); }
+    .pc-edu   { font-size: 12px; color: var(--sub); }
+
+    .pc-cash-row {
+      padding: 14px 16px;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .pc-cash-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--sub); flex-shrink: 0; }
+    .pc-cash-val { font-family: var(--mono); font-size: 26px; font-weight: 700; color: var(--gold); margin-left: auto; }
+
+    .pc-fin {
+      padding: 10px 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .pc-fin-item { text-align: center; padding: 8px 4px; border-radius: 8px; }
+    .pc-fin-item.inc { background: var(--green-dim); }
+    .pc-fin-item.exp { background: var(--red-dim); }
+    .pc-fin-item.bal { background: var(--elevated); }
+    .pc-fin-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--sub); margin-bottom: 3px; }
+    .pc-fin-val { font-family: var(--mono); font-size: 14px; font-weight: 600; }
+    .pc-fin-item.inc .pc-fin-val { color: var(--green); }
+    .pc-fin-item.exp .pc-fin-val { color: var(--red); }
+    .pc-fin-item.bal .pc-fin-val.pos { color: var(--green); }
+    .pc-fin-item.bal .pc-fin-val.neg { color: var(--red); }
+
+    .pc-expand { padding: 10px 16px; text-align: center; }
+    .btn-expand { background: transparent; border: none; color: var(--sub); font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; margin: 0 auto; }
+    .btn-expand:hover { color: var(--gold); }
+
+    .pc-detail { border-top: 1px solid var(--border); padding: 12px 16px; }
+    .detail-section { margin-bottom: 12px; }
+    .detail-title { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--sub); font-weight: 600; margin-bottom: 8px; }
+    .detail-row   { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-row .lft { color: var(--sub); font-size: 12px; }
+    .detail-row .rgt { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); }
+    .detail-row .rgt.pos { color: var(--green); }
+    .detail-row .rgt.neg { color: var(--red); }
+
+    .flag-badge {
+      display: inline-block;
+      background: var(--red-dim);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--red);
+      margin-left: 8px;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 80px 24px;
+      color: var(--sub);
+    }
+    .empty-icon { font-size: 56px; margin-bottom: 16px; }
+    .empty-title { font-family: var(--display); font-size: 28px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .empty-sub   { font-size: 14px; line-height: 1.6; }
+    .room-code-big { font-family: var(--mono); font-size: 42px; font-weight: 700; color: var(--gold); letter-spacing: 8px; margin: 24px 0 8px; background: rgba(245,166,35,0.05); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px dashed rgba(245,166,35,0.25); border-radius: 14px; padding: 16px 24px; display: inline-block; }
+
+    .room-menu-btn {
+      display: block;
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      text-align: left;
+      font-family: var(--body);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .room-menu-btn:hover { background: var(--elevated); }
+
+    .lang-switcher { display:flex; gap:3px; }
+    .lang-btn { background:transparent; border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:11px; font-weight:600; color:var(--sub); cursor:pointer; font-family:var(--mono); letter-spacing:0.5px; transition:border-color 0.15s,color 0.15s; }
+    .lang-btn.active { border-color:var(--gold); color:var(--gold); }
+    .lang-btn:hover:not(.active) { border-color:var(--text); color:var(--text); }
+
+    .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:100;display:flex;align-items:flex-end; }
+    .modal { background:var(--surface);border:1px solid var(--border);border-radius:22px 22px 0 0;padding:24px 20px;padding-bottom:calc(24px + env(safe-area-inset-bottom));width:100%;overflow-y:auto; }
+    .modal-title { font-size:22px;font-weight:700;color:var(--text); }
+
+    .alert-banner {
+      background: rgba(239,68,68,0.1);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-top: 1px solid rgba(239,68,68,0.2);
+      border-bottom: 1px solid rgba(239,68,68,0.15);
+      padding: 8px 24px;
+      font-size: 13px;
+      color: var(--red);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div id="login-screen">
+  <div class="logo">CashFlow</div>
+  <div class="logo-sub" data-i18n="logoSub">Фінансова гра</div>
+  <div class="gm-badge" data-i18n="gmBadge">🎮 Ведучий · GM Panel</div>
+
+  <div class="login-card">
+    <h2 data-i18n="gmLoginTitle">Підключитись до кімнати</h2>
+    <div class="f-group">
+      <label class="f-label" data-i18n="gmRoomLabel">Код кімнати</label>
+      <input type="text" class="f-input" id="room-inp" placeholder="ABCD" maxlength="6"
+             autocomplete="off" autocapitalize="characters"
+             oninput="this.value=this.value.toUpperCase()">
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-create" onclick="createRoom()" data-i18n="gmCreateBtn">Створити нову</button>
+      <button class="btn-join"   onclick="joinRoom()" data-i18n="gmJoinBtn">Підключитись</button>
+    </div>
+    <div style="margin-top:14px;display:flex;justify-content:center">
+      <div class="lang-switcher">
+        <button class="lang-btn" data-lang="UA" onclick="setLang('UA')">UA</button>
+        <button class="lang-btn" data-lang="RU" onclick="setLang('RU')">RU</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="hint" data-i18n-html="gmHint">
+    <strong>Створити нову</strong> — генерує код та відкриває кімнату<br>
+    <strong>Підключитись</strong> — відкриває існуючу кімнату за кодом
+  </p>
+</div>
+
+
+<!-- ══ DASHBOARD ══ -->
+<div id="gm-screen" class="hidden">
+
+  <div class="gm-header">
+    <div class="gm-header-left">
+      <div class="gm-title">CashFlow GM</div>
+      <div class="gm-room" id="gm-room-badge">—</div>
+    </div>
+    <div class="gm-header-right">
+      <div class="live-pill"><div class="live-dot"></div><span>LIVE</span></div>
+      <div class="player-count" id="hdr-player-count">0 гравців</div>
+      <button class="btn-leave" onclick="leaveRoom()" data-i18n="gmLeaveBtn">← Вийти</button>
+      <div style="position:relative" id="room-mgmt-wrap">
+        <button class="btn-leave" onclick="toggleRoomMenu()"
+                style="border-color:var(--border);color:var(--sub)" data-i18n="gmRoomBtn">
+          ⚙️ Кімната
+        </button>
+        <div id="room-menu" class="hidden"
+             style="position:absolute;right:0;top:calc(100% + 6px);
+                    background:var(--surface);border:1px solid var(--border);
+                    border-radius:12px;padding:6px;min-width:200px;z-index:50;
+                    box-shadow:0 8px 24px rgba(0,0,0,0.4)">
+          <button class="room-menu-btn" onclick="gmClearRoom()" data-i18n="gmClearBtn">
+            🧹 Очистити всіх гравців
+          </button>
+          <div style="height:1px;background:var(--border);margin:4px 0"></div>
+          <button class="room-menu-btn" onclick="gmDeleteRoom()"
+                  style="color:var(--red)" data-i18n="gmDeleteBtn">
+            🗑️ Закрити кімнату повністю
+          </button>
+        </div>
+      </div>
+      <div class="lang-switcher" style="margin-left:4px">
+        <button class="lang-btn" data-lang="UA" onclick="setLang('UA')">UA</button>
+        <button class="lang-btn" data-lang="RU" onclick="setLang('RU')">RU</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert-banner hidden" id="alert-banner">
+    <span>⚠️</span><span id="alert-text"></span>
+  </div>
+
+  <div id="approval-banner" class="hidden"
+       style="background:rgba(245,166,35,0.08);
+              border-bottom:1px solid rgba(245,166,35,0.2);
+              padding:8px 24px;display:flex;align-items:center;
+              justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <span style="font-size:16px">⏳</span>
+      <span style="color:var(--gold);font-weight:600" id="approval-banner-text">
+        Очікує підтвердження
+      </span>
+    </div>
+    <div id="approval-banner-actions" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+  </div>
+
+  <div class="summary-bar" id="summary-bar"></div>
+
+  <div class="gm-content">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">⏳</div>
+      <div class="empty-title" data-i18n="gmEmptyTitle">Очікуємо гравців</div>
+      <p class="empty-sub" data-i18n="gmEmptySub1">Дай гравцям цей код кімнати:</p>
+      <div class="room-code-big" id="big-room-code">—</div>
+      <p class="empty-sub" data-i18n-html="gmEmptySub2">Вони вводять його при старті гри<br>і з'являться тут автоматично</p>
+    </div>
+
+    <div class="players-grid hidden" id="players-grid"></div>
+  </div>
+
+</div>
+
+<script>
+let _currentRoom = null;
+let _players = {};
+let _expanded = {};
+let _pendingApprovals = {};
+
+function randomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c = '';
+  for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  return c;
+}
+
+async function createRoom() {
+  const inp = document.getElementById('room-inp');
+  const code = inp.value.trim() || randomCode();
+  inp.value = code.toUpperCase();
+  if (window._gmCreateRoom) {
+    const ok = await window._gmCreateRoom(code);
+    if (!ok) { alert(L('gmErrCreate')); return; }
+  }
+  openDashboard(code);
+}
+
+function joinRoom() {
+  const code = document.getElementById('room-inp').value.trim();
+  if (code.length < 4) { alert(L('gmErrJoin')); return; }
+  openDashboard(code);
+}
+
+function openDashboard(code) {
+  _currentRoom = code.toUpperCase();
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('gm-screen').classList.remove('hidden');
+  document.getElementById('gm-room-badge').textContent = '#' + _currentRoom;
+  document.getElementById('big-room-code').textContent = _currentRoom;
+
+  sessionStorage.setItem('gm_room', _currentRoom);
+
+  if (window._gmConnect) window._gmConnect(_currentRoom);
+  else console.error('Firebase module not loaded');
+
+  if (window._gmListenApprovals) {
+    window._gmListenApprovals(_currentRoom, (approvals) => {
+      _pendingApprovals = approvals;
+      renderApprovalBanner();
+      renderDashboard();
+    });
+  }
+}
+
+function leaveRoom() {
+  _currentRoom = null; _players = {};
+  sessionStorage.removeItem('gm_room');
+  document.getElementById('gm-screen').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('players-grid').classList.add('hidden');
+  document.getElementById('empty-state').classList.remove('hidden');
+}
+
+function renderApprovalBanner() {
+  const banner  = document.getElementById('approval-banner');
+  const text    = document.getElementById('approval-banner-text');
+  const actions = document.getElementById('approval-banner-actions');
+  if (!banner) return;
+
+  const pending = Object.entries(_pendingApprovals)
+    .filter(([, v]) => v?.status === 'pending');
+
+  if (pending.length === 0) { banner.classList.add('hidden'); return; }
+
+  banner.classList.remove('hidden');
+  text.textContent = `⏳ ${pending.length} запит${pending.length > 1 ? 'и' : ''} на підтвердження`;
+
+  actions.innerHTML = pending.map(([playerKey, req]) => `
+    <div style="display:flex;align-items:center;gap:6px;
+                background:rgba(0,0,0,0.2);border-radius:8px;
+                padding:5px 10px;border:1px solid rgba(245,166,35,0.2)">
+      <span style="font-size:12px;color:var(--text);font-weight:600">
+        ${req.playerName}: +$${req.amount}
+        ${req.desc ? `<span style="color:var(--sub);font-weight:400"> · ${req.desc}</span>` : ''}
+      </span>
+      <button onclick="gmApprove('${playerKey}', ${req.amount})"
+              style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);
+                     border-radius:100px;padding:3px 10px;color:var(--green);
+                     font-size:11px;font-weight:700;cursor:pointer">
+        ✓ Дозволити
+      </button>
+      <button onclick="gmReject('${playerKey}', ${req.amount})"
+              style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);
+                     border-radius:100px;padding:3px 10px;color:var(--red);
+                     font-size:11px;font-weight:700;cursor:pointer">
+        ✕ Відхилити
+      </button>
+    </div>`).join('');
+}
+
+async function gmApprove(playerKey, amount) {
+  await window._gmRespondApproval?.(_currentRoom, playerKey, 'approved', amount);
+}
+
+async function gmReject(playerKey, amount) {
+  await window._gmRespondApproval?.(_currentRoom, playerKey, 'rejected', amount);
+}
+
+window._gmOnUpdate = (data) => {
+  _players = data;
+  renderDashboard();
+};
+
+window._gmOnError = (msg) => {
+  showAlert(L('gmFirebaseErr', msg));
+};
+
+function renderDashboard() {
+  const entries = Object.entries(_players).filter(([k]) => !k.startsWith('_'));
+  const total   = entries.length;
+
+  document.getElementById('hdr-player-count').textContent = L('gmPlayerCount', total);
+
+  const grid  = document.getElementById('players-grid');
+  const empty = document.getElementById('empty-state');
+  if (total === 0) { grid.classList.add('hidden'); empty.classList.remove('hidden'); }
+  else             { grid.classList.remove('hidden'); empty.classList.add('hidden'); }
+
+  const players = entries.map(([, p]) => p);
+  renderSummary(players);
+  renderLeaderboard(players);
+  checkAnomalies(players);
+
+  grid.innerHTML = entries.map(([key, p]) => playerCard(key, p)).join('');
+
+  renderApprovalBanner();
+}
+
+function renderSummary(players) {
+  const online = players.filter(p => p._online !== false).length;
+  document.getElementById('summary-bar').innerHTML = `
+    <div class="sum-item" style="flex-shrink:0">
+      <div class="sum-lbl">${L('gmPlayersOnline')}</div>
+      <div class="sum-val">${online} / ${players.length}</div>
+    </div>
+    <div style="width:1px;background:var(--border);flex-shrink:0;align-self:stretch;margin:8px 0"></div>
+    <div id="leaderboard-bar"
+         style="display:flex;gap:8px;overflow-x:auto;align-items:center;padding:4px 0;scrollbar-width:none;-webkit-overflow-scrolling:touch;flex:1">
+    </div>
+  `;
+}
+
+function renderLeaderboard(players) {
+  const bar = document.getElementById('leaderboard-bar');
+  if (!bar) return;
+
+  const withPassive = players
+    .filter(p => p.playerName)
+    .map(p => ({
+      name:    p.playerName,
+      passive: calcPassiveForPlayer(p),
+      online:  p._online !== false,
+    }))
+    .sort((a, b) => b.passive - a.passive);
+
+  if (withPassive.length === 0) {
+    bar.innerHTML = `<div style="font-size:12px;color:var(--sub);padding:0 8px">${L('gmWaiting')}</div>`;
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+  bar.innerHTML = withPassive.map((p, i) => {
+    const medal = medals[i] || `${i + 1}.`;
+    const color = i === 0 ? 'var(--gold)' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : 'var(--sub)';
+    const dot   = p.online ? '<span style="width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block;margin-left:4px"></span>' : '';
+    return `<div style="display:flex;align-items:center;gap:6px;background:var(--elevated);border:1px solid var(--border);border-radius:20px;padding:4px 12px;flex-shrink:0;white-space:nowrap">
+      <span style="font-size:13px">${medal}</span>
+      <span style="font-size:12px;font-weight:600;color:var(--text)">${p.name}</span>
+      ${dot}
+      <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:${color}">$${Math.round(p.passive).toLocaleString()}</span>
+    </div>`;
+  }).join('');
+}
+
+function calcPassiveForPlayer(p) {
+  if (!p.incomes || !Array.isArray(p.incomes)) return 0;
+  const passiveIncomes = p.incomes.filter(i => i.type === 'passive');
+  if (passiveIncomes.length === 0) return 0;
+  const state = { courses: p.courses || [], trainings: p.trainings || [], incomes: p.incomes || [] };
+  return passiveIncomes.reduce((sum, inc) => sum + fi(state, inc), 0);
+}
+
+function checkAnomalies(players) {
+  const flags = [];
+  players.forEach(p => {
+    if ((p.cash || 0) < 0)
+      flags.push(L('gmAnomCashNeg', p.playerName, p.cash));
+    if ((p.loans?.bankRem  || 0) > 3000)
+      flags.push(L('gmAnomBankOver', p.playerName));
+    if ((p.loans?.microRem || 0) > 30000)
+      flags.push(L('gmAnomMicroOver', p.playerName));
+    if ((p.exp?.kids || 0) > 3)
+      flags.push(L('gmAnomKids', p.playerName));
+    const activeCount = (p.incomes || []).filter(i => i.type === 'employee' || i.type === 'self' || i.type === 'stipend').length;
+    if (activeCount > 2)
+      flags.push(L('gmAnomIncomes', p.playerName, activeCount));
+  });
+  const banner = document.getElementById('alert-banner');
+  if (flags.length) {
+    banner.classList.remove('hidden');
+    document.getElementById('alert-text').textContent = flags.join(' · ');
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+function getEduDisplay(p) {
+  const educations = p.educations || [];
+  if (educations.length === 0) return { icon: '🚶', label: L('gmEduNoStudy'), sub: '' };
+  const active    = educations.filter(e => !e.completed);
+  const completed = educations.filter(e =>  e.completed);
+  const parts = [];
+  active.forEach(e => {
+    const done = (e.roundsTotal || 0) - (e.roundsLeft || 0);
+    const typeName = e.type === 'university' ? L('gmEduUni') : L('gmEduCol');
+    parts.push(`📚 ${e.specialty?.name ?? typeName} · ${L('gmEduRounds', done, e.roundsTotal || '?')}`);
+  });
+  completed.forEach(e => parts.push(`✅ ${e.specialty?.name ?? e.type}`));
+  return {
+    icon:  active.length > 0 ? '📚' : '✅',
+    label: active.length > 0 ? L('gmEduStudent') : L('gmEduCompleted'),
+    sub:   parts.join(' · '),
+  };
+}
+
+function playerCard(key, p) {
+  const online  = p._online !== false;
+  const bal     = (p.balance || 0);
+  const balCls  = bal >= 0 ? 'pos' : 'neg';
+  const balSign = bal >= 0 ? '+' : '−';
+  const exp     = _expanded[key];
+
+  const edu = getEduDisplay(p);
+
+  let flags = '';
+  if ((p.cash || 0) < 0) flags += '<span class="flag-badge">Борг!</span>';
+  if ((p.loans?.bankRem  || 0) > 3000)  flags += '<span class="flag-badge">Банк↑</span>';
+  if ((p.loans?.microRem || 0) > 30000) flags += '<span class="flag-badge">МКО↑</span>';
+
+  const hasPending = _pendingApprovals[key]?.status === 'pending';
+  const pendingBadge = hasPending
+    ? `<div style="background:rgba(245,166,35,0.15);border:1px solid rgba(245,166,35,0.3);
+                   border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--gold)">
+         ⏳ +$${_pendingApprovals[key].amount}
+       </div>`
+    : '';
+
+  const passive = calcPassiveForPlayer(p);
+  const goal    = 30000;
+  const pct     = Math.min(100, Math.round(passive / goal * 100));
+  const passiveColor = passive >= 30000 ? 'var(--gold)' : 'var(--blue)';
+  const passiveRow = `
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--sub)">${L('gmPassiveInc')}</div>
+        <div style="font-family:var(--mono);font-size:18px;font-weight:600;color:${passiveColor}">$${Math.round(passive).toLocaleString()}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;color:var(--sub);margin-bottom:4px">${L('gmToRound2')}${pct}%</div>
+        <div style="width:80px;height:4px;background:var(--border);border-radius:4px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${passiveColor};border-radius:4px"></div>
+        </div>
+      </div>
+    </div>`;
+
+  let detail = '';
+  if (exp) {
+    const inc   = p.incomes   || [];
+    const crs   = p.courses   || [];
+    const trn   = p.trainings || [];
+    const ex    = p.exp       || {};
+    const loans = p.loans     || {};
+    const typeLbl = { employee: L('gmTypeEmployee'), self: L('gmTypeSelf'), stipend: L('gmTypeStipend'), passive: L('gmTypePassive') };
+    const housingAmt = parseFloat(ex.housingBase) || 0;
+    const kidCost    = parseFloat(ex.kidCost)     || 0;
+    const kids       = ex.kids || 0;
+
+    detail = `<div class="pc-detail">
+      ${inc.length ? `<div class="detail-section">
+        <div class="detail-title">${L('gmDetailIncomes')}</div>
+        ${inc.map(i => {
+          const condLabel = i.type === 'passive' && i.condition ? ` · ${L('gmCondPrefix')}${i.condition.label}` : (i.field ? ` · ${i.field}` : '');
+          return `<div class="detail-row"><span class="lft">${i.name} <span style="opacity:.5;font-size:11px">${typeLbl[i.type] || i.type}${condLabel}</span></span><span class="rgt pos">$${(i.basePay || 0).toFixed(0)}</span></div>`;
+        }).join('')}
+      </div>` : ''}
+
+      <div class="detail-section">
+        <div class="detail-title">${L('gmDetailExpenses')}</div>
+        <div class="detail-row"><span class="lft">${ex.housingLabel === 'Квартира' ? L('housingApt') : L('housingDorm')}</span><span class="rgt neg">$${housingAmt.toFixed(0)}</span></div>
+        <div class="detail-row"><span class="lft">${L('gmDetailFood')}</span><span class="rgt neg">$${(parseFloat(ex.food) || 0).toFixed(0)}</span></div>
+        <div class="detail-row"><span class="lft">${L('gmDetailComm')}</span><span class="rgt neg">$${(parseFloat(ex.comm) || 0).toFixed(0)}</span></div>
+        <div class="detail-row"><span class="lft">${L('gmDetailTransport')}</span><span class="rgt neg">$${(parseFloat(ex.transport) || 0).toFixed(0)}</span></div>
+        ${ex.hasWife ? `<div class="detail-row"><span class="lft">${L('gmDetailPartner')}</span><span class="rgt neg">$${(parseFloat(ex.wifeAmt) || 0).toFixed(0)}</span></div>` : ''}
+        ${kids > 0 ? `<div class="detail-row"><span class="lft">${L('gmDetailKids', kids, kidCost)}</span><span class="rgt neg">$${(kids * kidCost).toFixed(0)}</span></div>` : ''}
+        ${(loans.bankRem > 0)  ? `<div class="detail-row"><span class="lft">${L('gmDetailBank', loans.bankRem)}</span><span class="rgt neg">$${(loans.bankRem * 0.03).toFixed(0)}</span></div>` : ''}
+        ${(loans.microRem > 0) ? `<div class="detail-row"><span class="lft">${L('gmDetailMicro', loans.microRem)}</span><span class="rgt neg">$${(loans.microRem * 0.30).toFixed(0)}</span></div>` : ''}
+      </div>
+
+      ${crs.length ? `<div class="detail-section">
+        <div class="detail-title">${L('gmDetailCourses', crs.length)}</div>
+        ${crs.map(c => `<div class="detail-row"><span class="lft">${c.name} · ${c.field}</span><span class="rgt gold">+$${(c.pay || 0).toFixed(0)}</span></div>`).join('')}
+      </div>` : ''}
+
+      ${trn.length ? `<div class="detail-section">
+        <div class="detail-title">${L('gmDetailTrainings', trn.length)}</div>
+        ${trn.map(t => `<div class="detail-row"><span class="lft">${t.name}</span><span class="rgt gold">×${(parseFloat(t.mEmp) || 1).toFixed(2)} / ×${(parseFloat(t.mSelf) || 1).toFixed(2)} / ×${(parseFloat(t.mBiz) || 1).toFixed(2)}</span></div>`).join('')}
+      </div>` : ''}
+    </div>`;
+  }
+
+  return `<div class="player-card ${online ? 'online' : 'offline'}">
+    <div class="pc-header">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="pc-name">${p.playerName || key}</span>
+        ${flags}
+        ${pendingBadge}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="pc-status">
+          <div class="pc-dot ${online ? 'on' : ''}"></div>
+          <span>${online ? L('gmOnline') : L('gmOffline')}</span>
+        </div>
+        <button onclick="gmKickPlayer('${key}')"
+                title="${L('gmKickTooltip')}"
+                style="background:none;border:none;color:var(--sub);
+                       cursor:pointer;font-size:15px;padding:8px;
+                       border-radius:6px">✕</button>
+      </div>
+    </div>
+    <div class="pc-meta">
+      <div class="pc-badge">Раунд ${p.round || 1}</div>
+      <div class="pc-edu">${edu.icon} ${edu.sub || edu.label}</div>
+    </div>
+    <div class="pc-cash-row">
+      <div class="pc-cash-lbl">${L('gmCash')}</div>
+      <div class="pc-cash-val">$${Math.abs(p.cash || 0).toFixed(0)}</div>
+    </div>
+    ${passiveRow}
+    <div class="pc-fin">
+      <div class="pc-fin-item inc"><div class="pc-fin-lbl">${L('gmIncome')}</div><div class="pc-fin-val">$${(p.totalIncome || 0).toFixed(0)}</div></div>
+      <div class="pc-fin-item exp"><div class="pc-fin-lbl">${L('gmExpenses')}</div><div class="pc-fin-val">$${(p.totalExpense || 0).toFixed(0)}</div></div>
+      <div class="pc-fin-item bal"><div class="pc-fin-lbl">${L('gmBalance')}</div><div class="pc-fin-val ${balCls}">${balSign}$${Math.abs(bal).toFixed(0)}</div></div>
+    </div>
+    <div class="pc-expand" style="display:flex;gap:8px;align-items:center;padding:10px 16px">
+      <button class="btn-expand" style="flex:1" onclick="toggleExpand('${key}')">
+        ${exp ? L('gmCollapse') : L('gmExpand')}
+      </button>
+      <button onclick="showPlayerLog('${key}')"
+              style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:100px;padding:5px 12px;color:var(--sub);font-family:var(--body);font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;white-space:nowrap">
+        ${L('gmLogBtn')}
+      </button>
+    </div>
+    ${detail}
+  </div>`;
+}
+
+function toggleExpand(key) {
+  _expanded[key] = !_expanded[key];
+  renderDashboard();
+}
+
+function showAlert(msg) {
+  const b = document.getElementById('alert-banner');
+  b.classList.remove('hidden');
+  document.getElementById('alert-text').textContent = msg;
+}
+
+function toggleRoomMenu() {
+  document.getElementById('room-menu').classList.toggle('hidden');
+}
+
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('room-mgmt-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('room-menu')?.classList.add('hidden');
+  }
+});
+
+async function gmKickPlayer(playerKey) {
+  const name = _players[playerKey]?.playerName || playerKey;
+  if (!confirm(L('gmConfirmKick', name))) return;
+  const ok = await window._gmRemovePlayer?.(_currentRoom, playerKey);
+  if (!ok) alert(L('gmErrKick'));
+}
+
+async function gmClearRoom() {
+  const count = Object.keys(_players).filter(k => !k.startsWith('_')).length;
+  if (!confirm(L('gmConfirmClear', _currentRoom, count))) return;
+  const ok = await window._gmClearRoom?.(_currentRoom);
+  if (ok) {
+    _players = {};
+    document.getElementById('room-menu')?.classList.add('hidden');
+    renderDashboard();
+  } else {
+    alert(L('gmErrClear'));
+  }
+}
+
+async function gmDeleteRoom() {
+  if (!confirm(L('gmConfirmDelete', _currentRoom))) return;
+  const ok = await window._gmDeleteRoom?.(_currentRoom);
+  if (ok) {
+    document.getElementById('room-menu')?.classList.add('hidden');
+    leaveRoom();
+  } else {
+    alert(L('gmErrDelete'));
+  }
+}
+
+function showPlayerLog(playerKey) {
+  const p = _players[playerKey];
+  if (!p) return;
+  document.getElementById('gm-log-player-name').textContent = p.playerName || playerKey;
+  const log  = p.txLog || [];
+  const list  = document.getElementById('gm-txlog-list');
+  const empty = document.getElementById('gm-txlog-empty');
+  if (log.length === 0) {
+    list.innerHTML = '';
+    empty.classList.remove('hidden');
+  } else {
+    empty.classList.add('hidden');
+    const TYPE_META = {
+      income:    { icon: '💰', color: 'var(--green)' },
+      expense:   { icon: '💸', color: 'var(--red)' },
+      loan_take: { icon: '🏦', color: 'var(--gold)' },
+      loan_repay:{ icon: '✓',  color: 'var(--green)' },
+      deal:      { icon: '🤝', color: 'var(--blue)' },
+      passive:   { icon: '🚀', color: 'var(--gold)' },
+      round_end: { icon: '🏁', color: 'var(--sub)' },
+    };
+    list.innerHTML = log.map(tx => {
+      const meta   = TYPE_META[tx.type] || { icon: '•', color: 'var(--sub)' };
+      const isPos  = tx.amount >= 0;
+      const amtStr = (isPos ? '+' : '−') + '$' + Math.abs(tx.amount).toLocaleString();
+      const cashStr   = typeof tx.cash === 'number' ? `<span style="font-size:10px;color:var(--sub);background:rgba(255,255,255,0.05);border-radius:4px;padding:1px 6px;margin-right:4px">${L('txLogCash')} $${tx.cash.toLocaleString()}</span>` : '';
+      const creditStr = tx.credit > 0 ? `<span style="font-size:10px;color:var(--gold);background:rgba(245,166,35,0.1);border-radius:4px;padding:1px 6px;margin-right:4px">${L('gmLogCredit', tx.credit.toLocaleString())}</span>` : '';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;background:rgba(255,255,255,0.02);border-left:2px solid ${meta.color}">
+        <span style="font-size:14px;flex-shrink:0">${meta.icon}</span>
+        <span style="flex:1;font-size:12px;color:var(--sub)">${tx.label}</span>
+        ${cashStr}${creditStr}
+        <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${isPos ? 'var(--green)' : 'var(--red)'};flex-shrink:0">${amtStr}</span>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('gm-txlog-modal').classList.remove('hidden');
+}
+
+function closeGmLog() {
+  document.getElementById('gm-txlog-modal').classList.add('hidden');
+}
+
+function init() {
+  applyLang();
+  const saved = sessionStorage.getItem('gm_room');
+  if (saved) { document.getElementById('room-inp').value = saved; }
+}
+init();
+window.addEventListener('cf-lang-changed', () => { if (typeof renderDashboard === 'function') renderDashboard(); });
+</script>
+
+<div class="modal-overlay hidden" id="gm-txlog-modal"
+     onclick="if(event.target===this)closeGmLog()">
+  <div class="modal" style="max-height:80vh">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div>
+        <div class="modal-title" style="margin-bottom:2px" data-i18n="gmLogTitle">📋 Лог транзакцій</div>
+        <div style="font-size:12px;color:var(--sub)" id="gm-log-player-name">—</div>
+      </div>
+      <button onclick="closeGmLog()"
+              style="background:none;border:none;color:var(--sub);font-size:20px;cursor:pointer;padding:4px">✕</button>
+    </div>
+    <div id="gm-txlog-list"
+         style="display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:60vh"></div>
+    <div id="gm-txlog-empty" class="hidden"
+         style="text-align:center;padding:32px;color:var(--sub);font-size:13px"
+         data-i18n="gmLogEmpty">Транзакцій ще немає або дані не синхронізовані</div>
+  </div>
+</div>
+</body>
+</html>
