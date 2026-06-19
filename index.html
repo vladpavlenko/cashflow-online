@@ -318,8 +318,8 @@ async function joinGame() {
   const errEl = document.getElementById('join-error');
   errEl.classList.add('hidden');
 
-  if (!name)           { errEl.textContent = "Введи ім'я";           errEl.classList.remove('hidden'); return; }
-  if (code.length !== 6) { errEl.textContent = 'Код сесії — 6 символів'; errEl.classList.remove('hidden'); return; }
+  if (!name)          { errEl.textContent = "Введи ім'я";              errEl.classList.remove('hidden'); return; }
+  if (code.length < 2) { errEl.textContent = 'Введи код сесії'; errEl.classList.remove('hidden'); return; }
   if (!window._db)     { errEl.textContent = 'Firebase не підключено — перевір мережу'; errEl.classList.remove('hidden'); return; }
 
   _db = window._db;

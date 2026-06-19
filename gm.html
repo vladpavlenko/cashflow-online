@@ -609,7 +609,7 @@ let _pendingApprovals = {};
 function randomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let c = '';
-  for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 6; i++) c += chars[Math.floor(Math.random() * chars.length)];
   return c;
 }
 
@@ -1075,7 +1075,7 @@ function generateCode() {
 
 async function startSession() {
   if (!window._db) { alert('Спочатку підключіться до кімнати.'); return; }
-  _sessionId = generateCode();
+  _sessionId = _currentRoom; // один код — і кімната, і сесія для гравців
 
   await window._fbSet(window._fbRef(window._db, `sessions/${_sessionId}`), {
     status: 'playing', gmName: 'GM', round: 1, currentTurn: null,
