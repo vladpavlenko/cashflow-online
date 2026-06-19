@@ -15,7 +15,7 @@
 
   <script type="module">
     import { initializeApp }  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getDatabase, ref, onValue, set, get, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAOjnui8wVleQ-pNbGculhezKHrnEgLQcw",
@@ -33,6 +33,12 @@
       if (!_app) {
         _app = initializeApp(firebaseConfig);
         _db  = getDatabase(_app);
+        // Expose Firebase primitives for board.js
+        window._db        = _db;
+        window._fbSet     = set;
+        window._fbRef     = ref;
+        window._fbGet     = get;
+        window._fbOnValue = onValue;
       }
       if (_unsubscribe) _unsubscribe();
       const r = ref(_db, `rooms/${roomCode.toUpperCase()}/players`);
@@ -364,6 +370,81 @@
     .modal { background:var(--surface);border:1px solid var(--border);border-radius:22px 22px 0 0;padding:24px 20px;padding-bottom:calc(24px + env(safe-area-inset-bottom));width:100%;overflow-y:auto; }
     .modal-title { font-size:22px;font-weight:700;color:var(--text); }
 
+    /* ── SESSION BAR ── */
+    #session-bar {
+      background: rgba(17,20,32,0.7);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    #session-bar button {
+      background: linear-gradient(180deg,#2d4a8a,#1e3570);
+      border: none; border-radius: 12px; padding: 9px 20px;
+      color: #fff; font-family: var(--body); font-size: 14px; font-weight: 700;
+      cursor: pointer; box-shadow: 0 4px 12px rgba(30,53,112,0.4);
+      transition: transform 0.1s;
+    }
+    #session-bar button:active { transform: scale(0.97); }
+    #session-active { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    #session-active span { font-size: 13px; color: var(--sub); }
+    #session-active strong { color: var(--text); }
+    #current-turn-label { color: var(--gold); font-weight: 600; }
+
+    /* ── TURN CONTROLS ── */
+    #turn-controls {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .player-turn-row {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--elevated); border: 1px solid var(--border);
+      border-radius: 10px; padding: 8px 14px;
+    }
+    .player-turn-row span { font-size: 13px; color: var(--text); }
+    .player-turn-row button {
+      background: var(--gold-dim); border: 1px solid rgba(245,166,35,0.35);
+      border-radius: 8px; padding: 5px 12px;
+      color: var(--gold); font-family: var(--body); font-size: 12px; font-weight: 700;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .player-turn-row button:hover  { background: rgba(245,166,35,0.2); }
+    .player-turn-row button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ── LAST ROLL PANEL ── */
+    #last-roll-panel {
+      padding: 12px 20px;
+      background: rgba(12,14,25,0.6);
+      border-bottom: 1px solid var(--border);
+    }
+    #roll-result { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+    #card-type-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    #card-type-buttons button {
+      background: var(--elevated); border: 1.5px solid var(--border);
+      border-radius: 10px; padding: 7px 14px;
+      color: var(--text); font-family: var(--body); font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    #card-type-buttons button:hover { border-color: var(--gold); background: var(--gold-dim); }
+    #player-decision-status { font-size: 14px; font-weight: 600; margin-top: 4px; }
+
+    /* ── BOARD CONTAINER ── */
+    #board-container {
+      padding: 16px 20px;
+      display: flex;
+      justify-content: center;
+      border-bottom: 1px solid var(--border);
+    }
+    #board-container svg, #board-container object {
+      max-width: 100%;
+      height: auto;
+    }
+
     .alert-banner {
       background: rgba(239,68,68,0.1);
       backdrop-filter: blur(8px);
@@ -473,6 +554,33 @@
   </div>
 
   <div class="summary-bar" id="summary-bar"></div>
+
+  <!-- ── SESSION BAR ── -->
+  <div id="session-bar">
+    <div id="session-start">
+      <button onclick="startSession()">🎮 Почати нову гру</button>
+    </div>
+    <div id="session-active" class="hidden">
+      <span>Сесія: <strong id="sess-id">—</strong></span>
+      <span>Раунд: <strong id="sess-round">1</strong></span>
+      <span id="current-turn-label">Очікування ходу</span>
+    </div>
+  </div>
+
+  <!-- ── TURN CONTROLS ── -->
+  <div id="turn-controls" class="hidden"></div>
+
+  <!-- ── LAST ROLL RESULT ── -->
+  <div id="last-roll-panel" class="hidden">
+    <div id="roll-result"></div>
+    <div id="card-type-buttons"></div>
+    <div id="player-decision-status"></div>
+  </div>
+
+  <!-- ── BOARD SVG ── -->
+  <div id="board-container" class="hidden">
+    <!-- inline SVG injected by JS -->
+  </div>
 
   <div class="gm-content">
     <div class="empty-state" id="empty-state">
@@ -945,6 +1053,149 @@ function showPlayerLog(playerKey) {
 function closeGmLog() {
   document.getElementById('gm-txlog-modal').classList.add('hidden');
 }
+
+// ══════════════════════════════════════════════
+// SESSION MANAGEMENT
+// ══════════════════════════════════════════════
+let _sessionId = null;
+
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c = '';
+  for (let i = 0; i < 6; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  return c;
+}
+
+async function startSession() {
+  if (!window._db) { alert('Спочатку підключіться до кімнати.'); return; }
+  _sessionId = generateCode();
+
+  await window._fbSet(window._fbRef(window._db, `sessions/${_sessionId}`), {
+    status: 'playing', gmName: 'GM', round: 1, currentTurn: null,
+  });
+
+  document.getElementById('sess-id').textContent = _sessionId;
+  document.getElementById('session-start').classList.add('hidden');
+  document.getElementById('session-active').classList.remove('hidden');
+  document.getElementById('turn-controls').classList.remove('hidden');
+  document.getElementById('board-container').classList.remove('hidden');
+
+  loadBoardSVG();
+  window._fbListenSession(window._db, _sessionId, onSessionUpdate);
+}
+
+function loadBoardSVG() {
+  fetch('board.svg')
+    .then(r => r.text())
+    .then(svg => {
+      document.getElementById('board-container').innerHTML = svg;
+    })
+    .catch(() => {
+      document.getElementById('board-container').innerHTML =
+        '<p style="color:var(--sub);font-size:13px">board.svg не знайдено</p>';
+    });
+}
+
+function onSessionUpdate(session) {
+  if (!session) return;
+
+  document.getElementById('sess-round').textContent = session.round || 1;
+
+  const players = session.players || {};
+  renderTurnControls(players);
+
+  const turnLabel = document.getElementById('current-turn-label');
+  if (session.currentTurn) {
+    const name = players[session.currentTurn]?.playerName || session.currentTurn;
+    turnLabel.textContent = `Ходить: ${name}`;
+  } else {
+    turnLabel.textContent = 'Очікування ходу';
+  }
+
+  updateBoardTokens(players);
+
+  if (session.lastRoll) {
+    showRollResult(session.lastRoll, players);
+  }
+
+  if (session.playerDecision) {
+    const dec = session.playerDecision;
+    document.getElementById('player-decision-status').textContent =
+      dec.decision === 'accept' ? '✅ Гравець прийняв' : '❌ Гравець відмовився';
+  }
+}
+
+function renderTurnControls(players) {
+  const el = document.getElementById('turn-controls');
+  const entries = Object.entries(players);
+  if (entries.length === 0) {
+    el.innerHTML = '<span style="font-size:13px;color:var(--sub)">Гравців ще немає. Код сесії для гравців: <strong style="color:var(--gold)" id="sess-share">—</strong></span>';
+    const shareEl = el.querySelector('#sess-share');
+    if (shareEl) shareEl.textContent = _sessionId || '—';
+    return;
+  }
+  el.innerHTML = entries.map(([key, p]) => `
+    <div class="player-turn-row">
+      <span>${p.playerName || key} · $${p.cash || 0} · кл.${p.position || 0}</span>
+      <button onclick="grantTurn('${key}')"
+              ${p.online === false ? 'disabled title="Офлайн"' : ''}>
+        ▶ Хід
+      </button>
+    </div>
+  `).join('');
+}
+
+async function grantTurn(playerKey) {
+  if (!window._db || !_sessionId) return;
+  await window._fbGrantTurn(window._db, _sessionId, playerKey);
+  document.getElementById('last-roll-panel').classList.add('hidden');
+  document.getElementById('player-decision-status').textContent = '';
+}
+
+function showRollResult(roll, players) {
+  const panel = document.getElementById('last-roll-panel');
+  const name  = players[roll.playerKey]?.playerName || roll.playerKey;
+  document.getElementById('roll-result').textContent =
+    `${name} кинув(ла) ${roll.dice} → ${roll.cell?.label || '?'} (кл.${roll.position})`;
+  panel.classList.remove('hidden');
+  renderCardTypeButtons(roll.cell || {}, roll.playerKey);
+}
+
+function renderCardTypeButtons(cell, playerKey) {
+  const el = document.getElementById('card-type-buttons');
+  const typeMap = {
+    dela:    [
+      { type:'emp',     label:'💼 Робота на дядю' },
+      { type:'self',    label:'🧑‍💻 На себе' },
+      { type:'random',  label:'💰 Випадковий заробіток' },
+      { type:'deal',    label:'🤝 Купи-Продай' },
+      { type:'startup', label:'🚀 Стартап' },
+    ],
+    trening: [
+      { type:'course',   label:'📖 Курс' },
+      { type:'training', label:'🧠 Тренінг' },
+    ],
+    rashody:  [{ type:'expense',  label:'💸 Расходы (авто)' }],
+    uvolen:   [{ type:'uvolen',   label:'🔥 Уволен (авто)' }],
+    lyubov:   [{ type:'lyubov',   label:'💍 Любовь (авто)' }],
+    rebenok:  [{ type:'rebenok',  label:'👶 Ребенок (авто)' }],
+    dohody:   [{ type:'poluchka', label:'🏁 Получка (авто)' }],
+  };
+  const buttons = typeMap[cell.type] || [];
+  el.innerHTML = buttons.map(b =>
+    `<button onclick="gmSendCard('${b.type}','${playerKey}')">${b.label}</button>`
+  ).join('');
+}
+
+async function gmSendCard(cardType, playerKey) {
+  if (!window._db || !_sessionId) return;
+  const autoTypes = ['uvolen','lyubov','rebenok','poluchka'];
+  const card = drawCard(cardType);
+  if (!card && !autoTypes.includes(cardType)) { alert('Колода порожня!'); return; }
+  await window._fbSetCard(window._db, _sessionId, playerKey, cardType, card || {});
+}
+
+// ══════════════════════════════════════════════
 
 function init() {
   applyLang();

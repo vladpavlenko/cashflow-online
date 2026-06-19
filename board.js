@@ -37,3 +37,157 @@ function nextPosition(currentPos, steps) {
 function getCellAt(pos) {
   return BOARD_CELLS[pos % BOARD_CELLS.length];
 }
+
+function getCellCenter(cellId) {
+  const angle = (cellId * 15 - 90) * Math.PI / 180;
+  const r = 197;
+  return {
+    x: 300 + r * Math.cos(angle),
+    y: 300 + r * Math.sin(angle),
+  };
+}
+
+// ── Token rendering ──────────────────────────────────────────
+const _TOKEN_COLORS = ['#f5a623','#60a5fa','#c084fc','#22c55e','#ef4444','#fb923c','#f472b6','#34d399'];
+
+function updateBoardTokens(players) {
+  const svg = document.getElementById('board-svg');
+  if (!svg) return;
+  const group = svg.getElementById ? svg.getElementById('board-tokens')
+                                   : svg.querySelector('#board-tokens');
+  if (!group) return;
+
+  const keys = Object.keys(players || {});
+
+  // Remove stale tokens
+  Array.from(group.children).forEach(el => {
+    const key = el.id.replace('token-', '');
+    if (!players[key]) group.removeChild(el);
+  });
+
+  keys.forEach((key, idx) => {
+    const p = players[key];
+    const pos = getCellCenter(p.position || 0);
+
+    // Offset tokens sharing a cell
+    const sameCellCount = keys.slice(0, idx).filter(k => players[k].position === p.position).length;
+    const ox = sameCellCount * 13;
+
+    let tokenG = group.querySelector(`#token-${CSS.escape(key)}`);
+    if (!tokenG) {
+      const NS = 'http://www.w3.org/2000/svg';
+      tokenG = document.createElementNS(NS, 'g');
+      tokenG.id = `token-${key}`;
+
+      const circ = document.createElementNS(NS, 'circle');
+      circ.setAttribute('r', '10');
+      circ.setAttribute('fill', _TOKEN_COLORS[idx % _TOKEN_COLORS.length]);
+      circ.setAttribute('stroke', '#08090f');
+      circ.setAttribute('stroke-width', '2');
+
+      const txt = document.createElementNS(NS, 'text');
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('dominant-baseline', 'central');
+      txt.setAttribute('fill', '#08090f');
+      txt.setAttribute('font-size', '8');
+      txt.setAttribute('font-weight', '700');
+      txt.setAttribute('font-family', 'DM Sans, sans-serif');
+      txt.textContent = (p.playerName || key).charAt(0).toUpperCase();
+
+      tokenG.appendChild(circ);
+      tokenG.appendChild(txt);
+      group.appendChild(tokenG);
+    } else {
+      // Update initial colour if idx changed
+      const circ = tokenG.querySelector('circle');
+      if (circ) circ.setAttribute('fill', _TOKEN_COLORS[idx % _TOKEN_COLORS.length]);
+      const txt = tokenG.querySelector('text');
+      if (txt) txt.textContent = (p.playerName || key).charAt(0).toUpperCase();
+    }
+
+    tokenG.setAttribute('transform', `translate(${(pos.x + ox).toFixed(1)}, ${pos.y.toFixed(1)})`);
+  });
+}
+
+// ── Firebase helpers (board.js uses window._fb* set by HTML modules) ──
+
+window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
+  await window._fbSet(window._fbRef(db, `sessions/${sessionId}/players/${playerKey}`), {
+    playerName,
+    position: 0,
+    laps: 0,
+    online: true,
+    cash: 500,
+    incomes: [],
+    courses: [],
+    trainings: [],
+    deals: [],
+    loans:  { bankRem: 0, microRem: 0 },
+    exp:    { housing: 200, food: 120, comm: 10, transport: 30 },
+  });
+};
+
+window._fbGrantTurn = async (db, sessionId, playerKey) => {
+  const set = window._fbSet, ref = window._fbRef;
+  await set(ref(db, `sessions/${sessionId}/currentTurn`),     playerKey);
+  await set(ref(db, `sessions/${sessionId}/lastRoll`),        null);
+  await set(ref(db, `sessions/${sessionId}/currentCard`),     null);
+  await set(ref(db, `sessions/${sessionId}/playerDecision`),  null);
+};
+
+window._fbRollDice = async (db, sessionId, playerKey) => {
+  const set = window._fbSet, ref = window._fbRef, get = window._fbGet;
+
+  const turnSnap = await get(ref(db, `sessions/${sessionId}/currentTurn`));
+  if (turnSnap.val() !== playerKey) return null;
+
+  const dice    = Math.floor(Math.random() * 6) + 1;
+  const posSnap = await get(ref(db, `sessions/${sessionId}/players/${playerKey}/position`));
+  const oldPos  = posSnap.val() || 0;
+  const newPos  = (oldPos + dice) % 24;
+  const cell    = BOARD_CELLS[newPos];
+
+  await set(ref(db, `sessions/${sessionId}/players/${playerKey}/position`), newPos);
+
+  if (newPos <= oldPos && dice > 0) {
+    const rSnap = await get(ref(db, `sessions/${sessionId}/round`));
+    await set(ref(db, `sessions/${sessionId}/round`), (rSnap.val() || 1) + 1);
+  }
+
+  await set(ref(db, `sessions/${sessionId}/lastRoll`), {
+    playerKey, dice, position: newPos, cell,
+  });
+
+  await set(ref(db, `sessions/${sessionId}/currentTurn`), null);
+
+  return { dice, newPos, cell };
+};
+
+window._fbListenSession = (db, sessionId, callback) => {
+  window._fbOnValue(window._fbRef(db, `sessions/${sessionId}`), snap => callback(snap.val()));
+};
+
+window._fbListenTurn = (db, sessionId, playerKey, callback) => {
+  window._fbOnValue(window._fbRef(db, `sessions/${sessionId}/currentTurn`), snap => {
+    callback(snap.val() === playerKey);
+  });
+};
+
+window._fbListenCard = (db, sessionId, playerKey, callback) => {
+  window._fbOnValue(window._fbRef(db, `sessions/${sessionId}/currentCard`), snap => {
+    const data = snap.val();
+    if (data && data.playerKey === playerKey) callback(data);
+  });
+};
+
+window._fbPlayerDecision = async (db, sessionId, playerKey, decision) => {
+  await window._fbSet(window._fbRef(db, `sessions/${sessionId}/playerDecision`), {
+    playerKey, decision, ts: Date.now(),
+  });
+};
+
+window._fbSetCard = async (db, sessionId, playerKey, cardType, card) => {
+  await window._fbSet(window._fbRef(db, `sessions/${sessionId}/currentCard`), {
+    playerKey, cardType, card, drawnAt: Date.now(),
+  });
+};

@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="board-svg" viewBox="0 0 600 600" width="600" height="600">
+  <defs>
+    <filter id="glow-gold" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background disk -->
+  <circle cx="300" cy="300" r="258" fill="#0a0c18"/>
+
+  <!-- ── Cell sectors ──────────────────────────────────────── -->
+  <!-- 0 dela -->
+  <path d="M 300 155 L 300 50 A 250 250 0 0 1 364.7 58.5 L 337.5 159.9 A 145 145 0 0 0 300 155 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 1 trening -->
+  <path d="M 337.5 159.9 L 364.7 58.5 A 250 250 0 0 1 425 83.5 L 372.5 174.4 A 145 145 0 0 0 337.5 159.9 Z"
+        fill="#60a5fa" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 2 dela -->
+  <path d="M 372.5 174.4 L 425 83.5 A 250 250 0 0 1 476.8 123.2 L 402.5 197.5 A 145 145 0 0 0 372.5 174.4 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 3 rashody -->
+  <path d="M 402.5 197.5 L 476.8 123.2 A 250 250 0 0 1 516.5 175 L 425.6 227.5 A 145 145 0 0 0 402.5 197.5 Z"
+        fill="#ef4444" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 4 dela -->
+  <path d="M 425.6 227.5 L 516.5 175 A 250 250 0 0 1 541.5 235.3 L 440.1 262.5 A 145 145 0 0 0 425.6 227.5 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 5 trening -->
+  <path d="M 440.1 262.5 L 541.5 235.3 A 250 250 0 0 1 550 300 L 445 300 A 145 145 0 0 0 440.1 262.5 Z"
+        fill="#60a5fa" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 6 dela -->
+  <path d="M 445 300 L 550 300 A 250 250 0 0 1 541.5 364.7 L 440.1 337.5 A 145 145 0 0 0 445 300 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 7 uvolen -->
+  <path d="M 440.1 337.5 L 541.5 364.7 A 250 250 0 0 1 516.5 425 L 425.6 372.5 A 145 145 0 0 0 440.1 337.5 Z"
+        fill="#dc2626" opacity="0.88" stroke="#08090f" stroke-width="2"/>
+  <!-- 8 dela -->
+  <path d="M 425.6 372.5 L 516.5 425 A 250 250 0 0 1 476.8 476.8 L 402.5 402.5 A 145 145 0 0 0 425.6 372.5 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 9 trening -->
+  <path d="M 402.5 402.5 L 476.8 476.8 A 250 250 0 0 1 425 516.5 L 372.5 425.6 A 145 145 0 0 0 402.5 402.5 Z"
+        fill="#60a5fa" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 10 rashody -->
+  <path d="M 372.5 425.6 L 425 516.5 A 250 250 0 0 1 364.7 541.5 L 337.5 440.1 A 145 145 0 0 0 372.5 425.6 Z"
+        fill="#ef4444" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 11 dela -->
+  <path d="M 337.5 440.1 L 364.7 541.5 A 250 250 0 0 1 300 550 L 300 445 A 145 145 0 0 0 337.5 440.1 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 12 lyubov -->
+  <path d="M 300 445 L 300 550 A 250 250 0 0 1 235.3 541.5 L 262.5 440.1 A 145 145 0 0 0 300 445 Z"
+        fill="#c084fc" opacity="0.88" stroke="#08090f" stroke-width="2"/>
+  <!-- 13 trening -->
+  <path d="M 262.5 440.1 L 235.3 541.5 A 250 250 0 0 1 175 516.5 L 227.5 425.6 A 145 145 0 0 0 262.5 440.1 Z"
+        fill="#60a5fa" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 14 dela -->
+  <path d="M 227.5 425.6 L 175 516.5 A 250 250 0 0 1 123.2 476.8 L 197.5 402.5 A 145 145 0 0 0 227.5 425.6 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 15 rashody -->
+  <path d="M 197.5 402.5 L 123.2 476.8 A 250 250 0 0 1 83.5 425 L 174.4 372.5 A 145 145 0 0 0 197.5 402.5 Z"
+        fill="#ef4444" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 16 dela -->
+  <path d="M 174.4 372.5 L 83.5 425 A 250 250 0 0 1 58.5 364.7 L 159.9 337.5 A 145 145 0 0 0 174.4 372.5 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 17 trening -->
+  <path d="M 159.9 337.5 L 58.5 364.7 A 250 250 0 0 1 50 300 L 155 300 A 145 145 0 0 0 159.9 337.5 Z"
+        fill="#60a5fa" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 18 rebenok -->
+  <path d="M 155 300 L 50 300 A 250 250 0 0 1 58.5 235.3 L 159.9 262.5 A 145 145 0 0 0 155 300 Z"
+        fill="#22c55e" opacity="0.88" stroke="#08090f" stroke-width="2"/>
+  <!-- 19 dela -->
+  <path d="M 159.9 262.5 L 58.5 235.3 A 250 250 0 0 1 83.5 175 L 174.4 227.5 A 145 145 0 0 0 159.9 262.5 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 20 trening -->
+  <path d="M 174.4 227.5 L 83.5 175 A 250 250 0 0 1 123.2 123.2 L 197.5 197.5 A 145 145 0 0 0 174.4 227.5 Z"
+        fill="#60a5fa" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 21 rashody -->
+  <path d="M 197.5 197.5 L 123.2 123.2 A 250 250 0 0 1 175 83.5 L 227.5 174.4 A 145 145 0 0 0 197.5 197.5 Z"
+        fill="#ef4444" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 22 dela -->
+  <path d="M 227.5 174.4 L 175 83.5 A 250 250 0 0 1 235.3 58.5 L 262.5 159.9 A 145 145 0 0 0 227.5 174.4 Z"
+        fill="#f5a623" opacity="0.82" stroke="#08090f" stroke-width="2"/>
+  <!-- 23 dohody / Получка -->
+  <path d="M 262.5 159.9 L 235.3 58.5 A 250 250 0 0 1 300 50 L 300 155 A 145 145 0 0 0 262.5 159.9 Z"
+        fill="#16a34a" opacity="0.92" stroke="#08090f" stroke-width="2" filter="url(#glow-gold)"/>
+
+  <!-- ── Border rings ── -->
+  <circle cx="300" cy="300" r="250" fill="none" stroke="#252840" stroke-width="1.5"/>
+  <circle cx="300" cy="300" r="145" fill="#0a0c18" stroke="#252840" stroke-width="1.5"/>
+
+  <!-- ── Cell labels (rotated radially) ── -->
+  <g font-family="DM Sans, sans-serif" font-size="7.5" font-weight="700" fill="#08090f" text-anchor="middle" dominant-baseline="central">
+    <text transform="rotate(-82.5,325.7,104.8)" x="325.7" y="104.8">ДЕЛА</text>
+    <text transform="rotate(-67.5,375.4,118)"   x="375.4" y="118">ТРЕНИНГ</text>
+    <text transform="rotate(-52.5,419.9,143.7)" x="419.9" y="143.7">ДЕЛА</text>
+    <text transform="rotate(-37.5,456.3,180.1)" x="456.3" y="180.1">РАСХОДЫ</text>
+    <text transform="rotate(-22.5,482,224.6)"   x="482"   y="224.6">ДЕЛА</text>
+    <text transform="rotate(-7.5,495.3,274.3)"  x="495.3" y="274.3">ТРЕНИНГ</text>
+    <text transform="rotate(7.5,495.3,325.7)"   x="495.3" y="325.7">ДЕЛА</text>
+    <text transform="rotate(22.5,482,375.4)"    x="482"   y="375.4" fill="#fff">УВОЛЕН</text>
+    <text transform="rotate(37.5,456.3,419.9)"  x="456.3" y="419.9">ДЕЛА</text>
+    <text transform="rotate(52.5,419.9,456.3)"  x="419.9" y="456.3">ТРЕНИНГ</text>
+    <text transform="rotate(67.5,375.4,482)"    x="375.4" y="482">РАСХОДЫ</text>
+    <text transform="rotate(82.5,325.7,495.3)"  x="325.7" y="495.3">ДЕЛА</text>
+    <text transform="rotate(277.5,274.3,495.3)" x="274.3" y="495.3" fill="#fff">ЛЮБОВЬ</text>
+    <text transform="rotate(292.5,224.6,482)"   x="224.6" y="482">ТРЕНИНГ</text>
+    <text transform="rotate(307.5,180.1,456.3)" x="180.1" y="456.3">ДЕЛА</text>
+    <text transform="rotate(322.5,143.7,419.9)" x="143.7" y="419.9">РАСХОДЫ</text>
+    <text transform="rotate(337.5,118,375.4)"   x="118"   y="375.4">ДЕЛА</text>
+    <text transform="rotate(352.5,104.8,325.7)" x="104.8" y="325.7">ТРЕНИНГ</text>
+    <text transform="rotate(7.5,104.8,274.3)"   x="104.8" y="274.3" fill="#fff">РЕБЕНОК</text>
+    <text transform="rotate(22.5,118,224.6)"    x="118"   y="224.6">ДЕЛА</text>
+    <text transform="rotate(37.5,143.7,180.1)"  x="143.7" y="180.1">ТРЕНИНГ</text>
+    <text transform="rotate(52.5,180.1,143.7)"  x="180.1" y="143.7">РАСХОДЫ</text>
+    <text transform="rotate(67.5,224.6,118)"    x="224.6" y="118">ДЕЛА</text>
+    <text transform="rotate(82.5,274.3,104.8)"  x="274.3" y="104.8" fill="#fff" font-size="6.5">ДОХОДЫ</text>
+  </g>
+
+  <!-- ── Cell numbers (small, outer arc) ── -->
+  <g font-family="IBM Plex Mono, monospace" font-size="8" fill="rgba(255,255,255,0.45)" text-anchor="middle" dominant-baseline="central">
+    <text x="300"   y="36">0</text>
+    <text x="337.8" y="39.4">1</text>
+    <text x="373.6" y="49.3">2</text>
+    <text x="406.3" y="66.4">3</text>
+    <text x="434.5" y="90.1">4</text>
+    <text x="457"   y="119.6">5</text>
+    <text x="472.7" y="153.9">6</text>
+    <text x="480.8" y="191.4">7</text>
+    <text x="481.5" y="230.7">8</text>
+    <text x="474.8" y="269.9">9</text>
+    <text x="461.1" y="307.4">10</text>
+    <text x="440.6" y="341.5">11</text>
+    <text x="414"   y="371.2">12</text>
+    <text x="382.2" y="395.4">13</text>
+    <text x="346.2" y="413.2">14</text>
+    <text x="307.4" y="423.8">15</text>
+    <text x="267.4" y="426.8">16</text>
+    <text x="228.1" y="422.4">17</text>
+    <text x="191"   y="410.9">18</text>
+    <text x="158"   y="393">19</text>
+    <text x="130.2" y="369.4">20</text>
+    <text x="108.8" y="341.2">21</text>
+    <text x="95"    y="309.7">22</text>
+    <text x="89"    y="276.2">23</text>
+  </g>
+
+  <!-- ── Center area ── -->
+  <circle cx="300" cy="300" r="118" fill="#111420" stroke="#1e2240" stroke-width="1"/>
+  <circle cx="300" cy="300" r="90"  fill="#0d0f1e" stroke="#252840" stroke-width="1"/>
+
+  <text x="300" y="291" text-anchor="middle" dominant-baseline="central"
+        font-family="Cormorant Garamond, serif" font-size="26" font-weight="700" fill="#f5a623">
+    CashFlow
+  </text>
+  <text x="300" y="311" text-anchor="middle" dominant-baseline="central"
+        font-family="IBM Plex Mono, monospace" font-size="8" fill="#3d4560" letter-spacing="4">
+    ONLINE
+  </text>
+
+  <!-- ── Player tokens (populated by board.js updateBoardTokens) ── -->
+  <g id="board-tokens"/>
+</svg>

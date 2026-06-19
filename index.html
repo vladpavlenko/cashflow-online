@@ -17,7 +17,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAOjnui8wVleQ-pNbGculhezKHrnEgLQcw",
@@ -30,56 +30,32 @@
     };
 
     let _db = null;
-    let _roomCode = null;
-    let _playerKey = null;
-
-    window._fbReady = false;
 
     try {
       const app = initializeApp(firebaseConfig);
       _db = getDatabase(app);
+      // Expose for board.js
+      window._db        = _db;
+      window._fbSet     = set;
+      window._fbRef     = ref;
+      window._fbGet     = get;
+      window._fbOnValue = onValue;
     } catch(e) {
-      console.warn('Firebase init failed (offline mode):', e.message);
+      console.warn('Firebase init failed:', e.message);
     }
 
-    window._fbInit = (roomCode, playerName) => {
-      if (!_db) { window._fbReady = false; return; }
-      _roomCode  = roomCode.toUpperCase().trim();
-      _playerKey = playerName.trim().replace(/[.#$\/\[\]]/g, '_');
-      window._fbReady = true;
-      console.log('Firebase connected:', _roomCode, '/', _playerKey);
-    };
-
-    window._fbSync = async (payload) => {
-      if (!window._fbReady || !_db) return;
+    window._fbOffline = async (sessionId, playerKey) => {
+      if (!_db || !sessionId || !playerKey) return;
       try {
-        await set(ref(_db, `rooms/${_roomCode}/players/${_playerKey}`), {
-          ...payload,
-          _ts: Date.now(),
-          _online: true,
-        });
-      } catch(e) {
-        console.warn('Sync error:', e.message);
+        await set(ref(_db, `sessions/${sessionId}/players/${playerKey}/online`), false);
+      } catch(e) {}
+    };
+
+    window.addEventListener('beforeunload', () => {
+      if (window._mySessionId && window._myPlayerKey) {
+        window._fbOffline(window._mySessionId, window._myPlayerKey);
       }
-    };
-
-    window._fbOffline = async () => {
-      if (!window._fbReady || !_db) return;
-      try { await set(ref(_db, `rooms/${_roomCode}/players/${_playerKey}/_online`), false); }
-      catch(e) {}
-    };
-
-    window.addEventListener('beforeunload', () => window._fbOffline?.());
-
-    // Listen for state updates pushed from server/GM
-    window._fbListenState = (roomCode, playerKey, callback) => {
-      if (!_db) return;
-      const r = ref(_db, `rooms/${roomCode}/players/${playerKey}`);
-      onValue(r, snap => {
-        const data = snap.val();
-        if (data) callback(data);
-      });
-    };
+    });
   </script>
 
   <style>
@@ -91,112 +67,577 @@
       --gold:      #f5a623;
       --gold-dim:  rgba(245,166,35,0.13);
       --green:     #22c55e;
+      --green-dim: rgba(34,197,94,0.10);
       --red:       #ef4444;
+      --red-dim:   rgba(239,68,68,0.10);
       --blue:      #60a5fa;
       --text:      #e8ecf5;
       --sub:       #8892aa;
       --display:   'Cormorant Garamond', serif;
       --mono:      'IBM Plex Mono', monospace;
       --body:      'DM Sans', sans-serif;
-      --glass-bg:     rgba(255,255,255,0.04);
-      --glass-border: rgba(255,255,255,0.08);
     }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html { height: -webkit-fill-available; }
     body {
       background: #08090f;
       background-image:
-        radial-gradient(ellipse at 20% 20%, rgba(30,40,80,0.6) 0%, transparent 60%),
-        radial-gradient(ellipse at 80% 80%, rgba(20,30,60,0.5) 0%, transparent 60%);
+        radial-gradient(ellipse at 20% 10%, rgba(30,40,90,0.5) 0%, transparent 55%),
+        radial-gradient(ellipse at 80% 90%, rgba(20,25,60,0.4) 0%, transparent 55%);
       background-attachment: fixed;
       color: var(--text);
       font-family: var(--body);
       min-height: 100vh;
       min-height: -webkit-fill-available;
+    }
+    .hidden { display: none !important; }
+
+    /* ── JOIN SCREEN ── */
+    #join-screen {
+      min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      padding: 32px 20px;
+      max-width: 420px;
+      margin: 0 auto;
     }
-    #app {
-      text-align: center;
-      padding: 40px 24px;
+    .logo { font-family: var(--display); font-size: 48px; font-weight: 700; color: var(--gold); letter-spacing: 3px; margin-bottom: 6px; }
+    .logo-sub { font-size: 11px; letter-spacing: 5px; text-transform: uppercase; color: var(--sub); margin-bottom: 36px; }
+
+    .join-card {
+      width: 100%;
+      background: rgba(17,20,32,0.75);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 28px 24px;
     }
-    .logo {
-      font-family: var(--display);
-      font-size: 52px;
-      font-weight: 700;
-      color: var(--gold);
-      letter-spacing: 3px;
-      line-height: 1;
+    .join-card h2 { font-family: var(--display); font-size: 24px; font-weight: 700; margin-bottom: 20px; }
+    .f-group { margin-bottom: 16px; }
+    .f-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--sub); display: block; margin-bottom: 6px; }
+    .f-input-code {
+      width: 100%; background: rgba(255,255,255,0.05);
+      border: 1.5px solid rgba(255,255,255,0.1); border-radius: 10px;
+      padding: 14px 16px; color: var(--gold); font-family: var(--mono);
+      font-size: 22px; font-weight: 600; letter-spacing: 6px; text-align: center;
+      text-transform: uppercase; outline: none; transition: border-color 0.2s;
     }
-    .badge {
-      display: inline-block;
-      margin-top: 10px;
-      background: rgba(96,165,250,0.1);
-      border: 1px solid rgba(96,165,250,0.3);
-      border-radius: 8px;
-      padding: 4px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--blue);
-      letter-spacing: 1px;
-      text-transform: uppercase;
+    .f-input-code:focus { border-color: var(--gold); }
+    .f-input-name {
+      width: 100%; background: rgba(255,255,255,0.05);
+      border: 1.5px solid rgba(255,255,255,0.1); border-radius: 10px;
+      padding: 14px 16px; color: var(--text); font-family: var(--body);
+      font-size: 16px; outline: none; transition: border-color 0.2s;
     }
-    .wip {
-      margin-top: 32px;
-      background: var(--glass-bg);
-      border: 1px solid var(--glass-border);
-      border-radius: 16px;
-      padding: 24px 28px;
-      font-size: 15px;
-      color: var(--sub);
-      line-height: 1.6;
-      max-width: 360px;
+    .f-input-name:focus { border-color: var(--blue); }
+    .btn-join-game {
+      width: 100%; margin-top: 8px;
+      background: linear-gradient(180deg,#2d4a8a,#1e3570);
+      border: none; border-radius: 14px; padding: 15px;
+      color: #fff; font-family: var(--body); font-size: 16px; font-weight: 700;
+      cursor: pointer; box-shadow: 0 4px 16px rgba(30,53,112,0.4);
+      transition: transform 0.1s;
     }
-    .wip strong { color: var(--text); }
+    .btn-join-game:active { transform: scale(0.98); }
+    .join-err { font-size: 12px; color: var(--red); margin-top: 8px; text-align: center; min-height: 16px; }
+
+    /* ── GAME SCREEN ── */
+    #game-screen {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 16px 16px 60px;
+    }
+
+    /* Header */
+    .game-hdr {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 14px;
+    }
+    .game-hdr-title { font-family: var(--display); font-size: 26px; font-weight: 700; color: var(--gold); }
+    .game-hdr-right { text-align: right; }
+    .sess-badge {
+      background: rgba(96,165,250,0.1); border: 1px solid rgba(96,165,250,0.3);
+      border-radius: 20px; padding: 3px 12px;
+      font-family: var(--mono); font-size: 12px; color: var(--blue); letter-spacing: 2px;
+    }
+    .round-badge {
+      font-size: 10px; color: var(--sub); margin-top: 3px;
+    }
+
+    /* Turn status */
+    .turn-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .turn-card.my-turn {
+      border-color: rgba(245,166,35,0.4);
+      background: rgba(245,166,35,0.05);
+    }
+    .turn-icon { font-size: 24px; flex-shrink: 0; }
+    .turn-text { flex: 1; }
+    .turn-title { font-size: 15px; font-weight: 700; }
+    .turn-sub   { font-size: 12px; color: var(--sub); margin-top: 2px; }
+
+    /* Dice button */
+    .dice-wrap { margin-bottom: 12px; }
+    .dice-btn {
+      width: 100%; padding: 18px; border: none; border-radius: 14px;
+      background: var(--gold); color: #08090f;
+      font-family: var(--body); font-size: 17px; font-weight: 800;
+      cursor: pointer; letter-spacing: 0.3px;
+      box-shadow: 0 4px 24px rgba(245,166,35,0.28);
+      transition: transform 0.1s, opacity 0.1s;
+    }
+    .dice-btn:active  { transform: scale(0.97); opacity: 0.9; }
+    .dice-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* Roll result */
+    .roll-result-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      display: flex; align-items: center; gap: 12px;
+      animation: fadeUp 0.3s ease;
+    }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    .dice-face {
+      width: 48px; height: 48px; flex-shrink: 0;
+      background: #1a1e30; border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 12px; display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--gold);
+    }
+    .roll-meta { font-size: 13px; color: var(--sub); line-height: 1.6; }
+    .roll-meta strong { color: var(--text); }
+
+    /* Card display */
+    .event-card {
+      border-radius: 14px; padding: 16px; margin-bottom: 12px;
+      animation: fadeUp 0.3s ease;
+    }
+    .event-card.income   { background: rgba(34,197,94,0.06);  border: 1px solid rgba(34,197,94,0.2); }
+    .event-card.expense  { background: var(--red-dim);         border: 1px solid rgba(239,68,68,0.2); }
+    .event-card.passive  { background: rgba(245,166,35,0.06);  border: 1px solid rgba(245,166,35,0.25); }
+    .event-card.deal     { background: rgba(96,165,250,0.06);  border: 1px solid rgba(96,165,250,0.2); }
+    .event-card.training { background: rgba(168,85,247,0.06);  border: 1px solid rgba(168,85,247,0.2); }
+    .event-card.neutral  { background: var(--elevated);        border: 1px solid var(--border); }
+
+    .ev-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    .ev-body  { font-size: 13px; color: var(--sub); line-height: 1.7; margin-bottom: 14px; }
+    .ev-body strong { color: var(--text); }
+    .ev-body .req   { color: rgba(239,68,68,0.8); font-size: 12px; }
+
+    .ev-actions { display: flex; gap: 8px; }
+    .btn-accept {
+      flex: 1; padding: 12px; border-radius: 11px;
+      background: var(--green); color: #08090f;
+      border: none; font-family: var(--body); font-size: 14px; font-weight: 700;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn-accept:active { opacity: 0.85; }
+    .btn-decline {
+      flex: 1; padding: 12px; border-radius: 11px;
+      background: transparent; color: var(--sub);
+      border: 1px solid var(--border); font-family: var(--body); font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .btn-decline:active { background: var(--elevated); }
+
+    /* Lobby state */
+    .lobby-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px; padding: 32px 20px; text-align: center;
+    }
+    .lobby-icon { font-size: 48px; margin-bottom: 12px; }
+    .lobby-title { font-family: var(--display); font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+    .lobby-sub   { font-size: 13px; color: var(--sub); line-height: 1.6; }
+    .lobby-code  {
+      font-family: var(--mono); font-size: 32px; font-weight: 700; color: var(--gold);
+      letter-spacing: 6px; margin: 16px 0 4px;
+    }
+
+    /* Player info bar */
+    .info-bar {
+      display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .info-pill {
+      background: var(--elevated); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 12px;
+      font-size: 12px; color: var(--sub);
+    }
+    .info-pill strong { color: var(--text); font-family: var(--mono); }
   </style>
 </head>
 <body>
 
-<div id="app">
+<!-- ══ JOIN SCREEN ══ -->
+<div id="join-screen">
   <div class="logo">CashFlow</div>
-  <div class="badge">Online v2 — Клієнт гравця</div>
-  <div class="wip">
-    <strong>В розробці</strong><br>
-    Гравець не може редагувати стан напряму.<br>
-    Всі зміни відбуваються через Firebase від GM.
+  <div class="logo-sub">Online — Гравець</div>
+
+  <div class="join-card">
+    <h2>Приєднатись до гри</h2>
+    <div class="f-group">
+      <label class="f-label">Код сесії</label>
+      <input type="text" class="f-input-code" id="inp-sess"
+             placeholder="ABCD12" maxlength="6"
+             autocomplete="off" autocapitalize="characters"
+             oninput="this.value=this.value.toUpperCase()">
+    </div>
+    <div class="f-group">
+      <label class="f-label">Твоє ім'я</label>
+      <input type="text" class="f-input-name" id="inp-name"
+             placeholder="Марія" maxlength="20" autocomplete="off">
+    </div>
+    <button class="btn-join-game" onclick="joinSession()">▶ Приєднатись</button>
+    <div class="join-err" id="join-err"></div>
   </div>
 </div>
 
+<!-- ══ GAME SCREEN ══ -->
+<div id="game-screen" class="hidden">
+
+  <div class="game-hdr">
+    <div class="game-hdr-title">CashFlow</div>
+    <div class="game-hdr-right">
+      <div class="sess-badge" id="hdr-sess-code">—</div>
+      <div class="round-badge">Раунд <span id="hdr-round">1</span></div>
+    </div>
+  </div>
+
+  <!-- Lobby / waiting for start -->
+  <div id="lobby-panel" class="lobby-card">
+    <div class="lobby-icon">⏳</div>
+    <div class="lobby-title">Очікуємо початку</div>
+    <div class="lobby-sub">GM ще не почав гру.<br>Твій код для GM:</div>
+    <div class="lobby-code" id="lobby-code">—</div>
+    <div class="lobby-sub" style="color:var(--sub);font-size:11px">Твоє ім'я: <strong id="lobby-name" style="color:var(--text)">—</strong></div>
+  </div>
+
+  <!-- Active game UI -->
+  <div id="game-panel" class="hidden">
+
+    <div class="info-bar">
+      <div class="info-pill">Клітина: <strong id="info-pos">0</strong></div>
+      <div class="info-pill">Готівка: <strong id="info-cash">$500</strong></div>
+    </div>
+
+    <!-- Turn status -->
+    <div class="turn-card" id="turn-card">
+      <div class="turn-icon">⏳</div>
+      <div class="turn-text">
+        <div class="turn-title" id="turn-status">Очікуй свого ходу...</div>
+        <div class="turn-sub" id="turn-sub">GM дасть право ходу</div>
+      </div>
+    </div>
+
+    <!-- Dice button -->
+    <div class="dice-wrap">
+      <button class="dice-btn" id="btn-roll" onclick="playerRoll()" disabled>
+        🎲 Кинути кубик
+      </button>
+    </div>
+
+    <!-- Roll result -->
+    <div id="roll-result-wrap" class="hidden">
+      <div class="roll-result-card">
+        <div class="dice-face" id="dice-face">—</div>
+        <div class="roll-meta" id="roll-meta">
+          Кубик: <strong id="roll-dice">—</strong><br>
+          Клітина: <strong id="roll-cell">—</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card -->
+    <div id="my-card" class="hidden"></div>
+
+  </div><!-- /game-panel -->
+
+</div><!-- /game-screen -->
+
 <script>
-// Базовий стан гравця
-let S = {
-  playerName: '',
-  roomCode: '',
-  cash: 1000,
-  round: 1,
-  position: 0,
-  educations: [],
-  incomes: [],
-  exp: {
-    housingLabel: 'Гуртожиток',
-    housingBase: 0,
-    housingType: 'self',
-    food: 120,
-    comm: 10,
-    transport: 30,
-    hasWife: false,
-    wifeAmt: 0,
-    kids: 0,
-    kidCost: 100,
-  },
-  loans: { bankAmt: 0, bankRem: 0, microAmt: 0, microRem: 0 },
-  courses: [],
-  trainings: [],
-  deals: [],
-  deposit: 0,
-  txLog: [],
-};
+let _myPlayerKey = null;
+let _mySessionId = null;
+let _myTurn      = false;
+
+async function joinSession() {
+  const sessId   = document.getElementById('inp-sess').value.trim().toUpperCase();
+  const nameRaw  = document.getElementById('inp-name').value.trim();
+  const errEl    = document.getElementById('join-err');
+
+  if (sessId.length < 4)  { errEl.textContent = 'Введи код сесії (мінімум 4 символи)'; return; }
+  if (!nameRaw)            { errEl.textContent = "Введи своє ім'я"; return; }
+  if (!window._db)         { errEl.textContent = 'Firebase не підключено — перевір мережу'; return; }
+
+  errEl.textContent = '';
+  _myPlayerKey = nameRaw.replace(/[.#$\/\[\]\s]/g, '_');
+  _mySessionId = sessId;
+
+  window._mySessionId = _mySessionId;
+  window._myPlayerKey = _myPlayerKey;
+
+  try {
+    await window._fbJoinSession(window._db, _mySessionId, _myPlayerKey, nameRaw);
+  } catch(e) {
+    errEl.textContent = 'Помилка підключення: ' + e.message;
+    return;
+  }
+
+  // Switch to game screen
+  document.getElementById('join-screen').classList.add('hidden');
+  document.getElementById('game-screen').classList.remove('hidden');
+  document.getElementById('hdr-sess-code').textContent = _mySessionId;
+  document.getElementById('lobby-code').textContent = _mySessionId;
+  document.getElementById('lobby-name').textContent = nameRaw;
+
+  // Listeners
+  window._fbListenTurn(window._db, _mySessionId, _myPlayerKey, (isMyTurn) => {
+    _myTurn = isMyTurn;
+    updateRollButton();
+  });
+
+  window._fbListenCard(window._db, _mySessionId, _myPlayerKey, (data) => {
+    showMyCard(data.card, data.cardType);
+  });
+
+  window._fbListenSession(window._db, _mySessionId, (session) => {
+    updatePlayerUI(session);
+  });
+}
+
+function updateRollButton() {
+  const btn = document.getElementById('btn-roll');
+  const card = document.getElementById('turn-card');
+  const title = document.getElementById('turn-status');
+  const sub   = document.getElementById('turn-sub');
+
+  if (_myTurn) {
+    btn.disabled = false;
+    btn.textContent = '🎲 Кинути кубик';
+    btn.style.background = 'var(--gold)';
+    card.classList.add('my-turn');
+    title.textContent = '⚡ Твій хід!';
+    sub.textContent   = 'Кидай кубик';
+  } else {
+    btn.disabled = true;
+    btn.textContent = '🎲 Кинути кубик';
+    btn.style.background = '';
+    card.classList.remove('my-turn');
+    title.textContent = 'Очікуй свого ходу...';
+    sub.textContent   = 'GM дасть право ходу';
+  }
+}
+
+async function playerRoll() {
+  if (!_myTurn) return;
+  const btn = document.getElementById('btn-roll');
+  btn.disabled = true;
+  btn.textContent = '⏳';
+
+  const result = await window._fbRollDice(window._db, _mySessionId, _myPlayerKey);
+  if (!result) { updateRollButton(); return; }
+
+  // Show roll result
+  document.getElementById('dice-face').textContent = result.dice;
+  document.getElementById('roll-dice').textContent = result.dice;
+  document.getElementById('roll-cell').textContent = result.cell?.label || '?';
+  document.getElementById('roll-result-wrap').classList.remove('hidden');
+
+  _myTurn = false;
+  updateRollButton();
+}
+
+function showMyCard(card, cardType) {
+  const el = document.getElementById('my-card');
+  el.innerHTML = formatCardForPlayer(card, cardType);
+  el.classList.remove('hidden');
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function formatCardForPlayer(card, cardType) {
+  const autoTypes = { uvolen:'🔥 Уволен', lyubov:'💍 Любовь', rebenok:'👶 Ребенок', poluchka:'🏁 Отримай доходи' };
+  if (autoTypes[cardType]) {
+    return `<div class="event-card neutral">
+      <div class="ev-title">${autoTypes[cardType]}</div>
+      <div class="ev-body">Повідом GM, що отримав цю клітину.</div>
+      <div class="ev-actions">
+        <button class="btn-accept" onclick="playerAccept()">✓ Зрозумів</button>
+      </div>
+    </div>`;
+  }
+
+  if (cardType === 'expense') {
+    return `<div class="event-card expense">
+      <div class="ev-title">💸 Опять расходы</div>
+      <div class="ev-body">Одноразова витрата: <strong style="color:var(--red)">−$${card.amount}</strong></div>
+      <div class="ev-actions">
+        <button class="btn-accept" onclick="playerAccept()">✓ Сплачую −$${card.amount}</button>
+      </div>
+    </div>`;
+  }
+
+  if (cardType === 'emp' || cardType === 'self') {
+    const icon  = cardType === 'emp' ? '💼' : '🧑‍💻';
+    const title = cardType === 'emp' ? 'Вакансія: Робота на дядю' : 'Вакансія: На себе';
+    const req   = (card.req || []).length
+      ? `<div class="req">⚠ Вимоги: ${card.req.join(', ')}</div>`
+      : '<span style="color:var(--green);font-size:12px">✓ Без вимог</span>';
+    return `<div class="event-card income">
+      <div class="ev-title">${icon} ${title}</div>
+      <div class="ev-body">
+        <strong>${card.name}</strong><br>
+        Дохід: <strong style="color:var(--green)">$${card.pay}/міс</strong><br>
+        ${req}
+      </div>
+      <div class="ev-actions">
+        <button class="btn-accept"  onclick="playerAccept()">✓ Беру роботу</button>
+        <button class="btn-decline" onclick="playerDecline()">Пропускаю</button>
+      </div>
+    </div>`;
+  }
+
+  if (cardType === 'random') {
+    const req = (card.req || []).length
+      ? `<div class="req">⚠ Вимоги: ${card.req.join(', ')}</div>` : '';
+    return `<div class="event-card income">
+      <div class="ev-title">💰 Випадковий заробіток</div>
+      <div class="ev-body">
+        <strong>${card.name}</strong><br>
+        Разовий дохід: <strong style="color:var(--green)">+$${card.amount}</strong>${req ? '<br>' + req : ''}
+      </div>
+      <div class="ev-actions">
+        <button class="btn-accept"  onclick="playerAccept()">✓ Беру +$${card.amount}</button>
+        <button class="btn-decline" onclick="playerDecline()">Пропускаю</button>
+      </div>
+    </div>`;
+  }
+
+  if (cardType === 'deal') {
+    const profit = Math.round(card.invest * card.mult);
+    const req    = (card.req || []).length
+      ? `<div class="req">⚠ Вимоги: ${card.req.join(', ')}</div>`
+      : '<span style="color:var(--green);font-size:12px">✓ Без вимог</span>';
+    return `<div class="event-card deal">
+      <div class="ev-title">🤝 Купи-Продай</div>
+      <div class="ev-body">
+        <strong>${card.name}</strong><br>
+        Вкладення: <strong style="color:var(--red)">−$${card.invest}</strong><br>
+        Прибуток: <strong style="color:var(--green)">+$${profit}</strong> за ${card.term} міс.<br>
+        ${req}
+      </div>
+      <div class="ev-actions">
+        <button class="btn-accept"  onclick="playerAccept()">✓ Укладаю угоду</button>
+        <button class="btn-decline" onclick="playerDecline()">Пропускаю</button>
+      </div>
+    </div>`;
+  }
+
+  if (cardType === 'startup') {
+    const monthly = Math.round(card.invest * card.pct);
+    const req     = (card.req || []).length
+      ? `<div class="req">⚠ Вимоги: ${card.req.join(', ')}</div>`
+      : '<span style="color:var(--green);font-size:12px">✓ Без вимог</span>';
+    return `<div class="event-card passive">
+      <div class="ev-title">🚀 Стартап / Кейс</div>
+      <div class="ev-body">
+        <strong>${card.name}</strong><br>
+        Вхід: <strong style="color:var(--red)">−$${card.invest.toLocaleString()}</strong><br>
+        Пасивний дохід: <strong style="color:var(--gold)">+$${monthly}/міс</strong><br>
+        ${req}
+      </div>
+      <div class="ev-actions">
+        <button class="btn-accept"  onclick="playerAccept()">✓ Відкриваю</button>
+        <button class="btn-decline" onclick="playerDecline()">Пропускаю</button>
+      </div>
+    </div>`;
+  }
+
+  if (cardType === 'course') {
+    return `<div class="event-card training">
+      <div class="ev-title">📖 Курс</div>
+      <div class="ev-body">
+        <strong>${card.name}</strong><br>
+        Вартість: <strong style="color:var(--red)">$${card.cost}</strong><br>
+        Ефект: ${card.effect}
+      </div>
+      <div class="ev-actions">
+        <button class="btn-accept"  onclick="playerAccept()">✓ Проходжу курс</button>
+        <button class="btn-decline" onclick="playerDecline()">Пропускаю</button>
+      </div>
+    </div>`;
+  }
+
+  if (cardType === 'training') {
+    return `<div class="event-card ${card.mult === 0 ? 'neutral' : 'training'}">
+      <div class="ev-title">🧠 Тренінг</div>
+      <div class="ev-body">
+        <strong>${card.name}</strong><br>
+        Вартість: <strong style="color:var(--red)">$${card.cost}</strong><br>
+        ${card.mult === 0
+          ? '<span style="color:var(--sub)">⚠ Ефект невідомий до проходження</span>'
+          : `Ефект: ${card.effect}`}
+      </div>
+      <div class="ev-actions">
+        <button class="btn-accept"  onclick="playerAccept()">✓ Проходжу</button>
+        <button class="btn-decline" onclick="playerDecline()">Пропускаю</button>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="event-card neutral">
+    <div class="ev-title">Картка</div>
+    <div class="ev-body">${JSON.stringify(card)}</div>
+    <div class="ev-actions">
+      <button class="btn-accept" onclick="playerAccept()">✓ Прийняти</button>
+      <button class="btn-decline" onclick="playerDecline()">Відмовитись</button>
+    </div>
+  </div>`;
+}
+
+async function playerAccept() {
+  await window._fbPlayerDecision(window._db, _mySessionId, _myPlayerKey, 'accept');
+  document.getElementById('my-card').classList.add('hidden');
+}
+
+async function playerDecline() {
+  await window._fbPlayerDecision(window._db, _mySessionId, _myPlayerKey, 'decline');
+  document.getElementById('my-card').classList.add('hidden');
+}
+
+function updatePlayerUI(session) {
+  if (!session) return;
+
+  document.getElementById('hdr-round').textContent = session.round || 1;
+
+  const isPlaying = session.status === 'playing';
+  document.getElementById('lobby-panel').classList.toggle('hidden', isPlaying);
+  document.getElementById('game-panel').classList.toggle('hidden', !isPlaying);
+
+  if (!isPlaying) return;
+
+  const me = session.players?.[_myPlayerKey];
+  if (me) {
+    document.getElementById('info-pos').textContent  = me.position || 0;
+    document.getElementById('info-cash').textContent = '$' + (me.cash || 0);
+  }
+
+  // Hide roll result when a new turn starts (lastRoll is null)
+  if (!session.lastRoll) {
+    document.getElementById('roll-result-wrap').classList.add('hidden');
+    document.getElementById('my-card').classList.add('hidden');
+  }
+}
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
