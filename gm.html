@@ -427,14 +427,6 @@
       border-bottom: 1px solid var(--border);
     }
     #roll-result { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
-    #card-type-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-    #card-type-buttons button {
-      background: var(--elevated); border: 1.5px solid var(--border);
-      border-radius: 10px; padding: 7px 14px;
-      color: var(--text); font-family: var(--body); font-size: 13px; font-weight: 600;
-      cursor: pointer; transition: border-color 0.15s, background 0.15s;
-    }
-    #card-type-buttons button:hover { border-color: var(--gold); background: var(--gold-dim); }
     #player-decision-status { font-size: 14px; font-weight: 600; margin-top: 4px; }
 
     /* ── BOARD CONTAINER ── */
@@ -577,7 +569,7 @@
   <!-- ── LAST ROLL RESULT ── -->
   <div id="last-roll-panel" class="hidden">
     <div id="roll-result"></div>
-    <div id="card-type-buttons"></div>
+    <div id="card-request-status" style="font-size:14px;font-weight:600;margin-bottom:4px"></div>
     <div id="player-decision-status"></div>
   </div>
 
@@ -1089,6 +1081,32 @@ async function startSession() {
 
   loadBoardSVG();
   window._fbListenSession(window._db, _sessionId, onSessionUpdate);
+
+  const CARD_TYPE_LABELS = {
+    emp: 'Робота на дядю', self: 'На себе', random: 'Випадковий заробіток',
+    deal: 'Купи-Продай', startup: 'Стартап', course: 'Курс', training: 'Тренінг',
+  };
+
+  window._fbOnValue(window._fbRef(window._db, `sessions/${_sessionId}/cardTypeRequest`), async (snap) => {
+    const req = snap.val();
+    if (!req || !req.cardType || !req.playerKey) return;
+
+    const statusEl = document.getElementById('card-request-status');
+    const label = CARD_TYPE_LABELS[req.cardType] || req.cardType;
+
+    if (statusEl) {
+      statusEl.textContent = `Гравець обрав: ${label} — відправляємо...`;
+      statusEl.style.color = 'var(--text)';
+    }
+
+    await gmSendCard(req.cardType, req.playerKey);
+    await window._fbSet(window._fbRef(window._db, `sessions/${_sessionId}/cardTypeRequest`), null);
+
+    if (statusEl) {
+      statusEl.textContent = `✅ Картку надіслано (${label})`;
+      statusEl.style.color = 'var(--green)';
+    }
+  });
 }
 
 function loadBoardSVG() {
@@ -1159,39 +1177,37 @@ async function grantTurn(playerKey) {
   document.getElementById('player-decision-status').textContent = '';
 }
 
+let _lastAutoSentRollTs = null;
+
+const GM_AUTO_TYPE_MAP = {
+  rashody: 'expense',
+  uvolen:  'uvolen',
+  lyubov:  'lyubov',
+  rebenok: 'rebenok',
+  dohody:  'poluchka',
+};
+
 function showRollResult(roll, players) {
   const panel = document.getElementById('last-roll-panel');
   const name  = players[roll.playerKey]?.playerName || roll.playerKey;
   document.getElementById('roll-result').textContent =
     `${name} кинув(ла) ${roll.dice} → ${roll.cell?.label || '?'} (кл.${roll.position})`;
   panel.classList.remove('hidden');
-  renderCardTypeButtons(roll.cell || {}, roll.playerKey);
-}
 
-function renderCardTypeButtons(cell, playerKey) {
-  const el = document.getElementById('card-type-buttons');
-  const typeMap = {
-    dela:    [
-      { type:'emp',     label:'💼 Робота на дядю' },
-      { type:'self',    label:'🧑‍💻 На себе' },
-      { type:'random',  label:'💰 Випадковий заробіток' },
-      { type:'deal',    label:'🤝 Купи-Продай' },
-      { type:'startup', label:'🚀 Стартап' },
-    ],
-    trening: [
-      { type:'course',   label:'📖 Курс' },
-      { type:'training', label:'🧠 Тренінг' },
-    ],
-    rashody:  [{ type:'expense',  label:'💸 Расходы (авто)' }],
-    uvolen:   [{ type:'uvolen',   label:'🔥 Уволен (авто)' }],
-    lyubov:   [{ type:'lyubov',   label:'💍 Любовь (авто)' }],
-    rebenok:  [{ type:'rebenok',  label:'👶 Ребенок (авто)' }],
-    dohody:   [{ type:'poluchka', label:'🏁 Получка (авто)' }],
-  };
-  const buttons = typeMap[cell.type] || [];
-  el.innerHTML = buttons.map(b =>
-    `<button onclick="gmSendCard('${b.type}','${playerKey}')">${b.label}</button>`
-  ).join('');
+  const cellType = roll.cell?.type;
+  const statusEl = document.getElementById('card-request-status');
+
+  if (GM_AUTO_TYPE_MAP[cellType] && _lastAutoSentRollTs !== roll.ts) {
+    _lastAutoSentRollTs = roll.ts;
+    gmSendCard(GM_AUTO_TYPE_MAP[cellType], roll.playerKey);
+    statusEl.textContent = `⚡ Автоматично: ${GM_AUTO_TYPE_MAP[cellType]}`;
+    statusEl.style.color = 'var(--green)';
+  } else if (cellType === 'dela' || cellType === 'trening') {
+    statusEl.textContent = '🎴 Гравець обирає тип картки...';
+    statusEl.style.color = 'var(--gold)';
+  } else {
+    statusEl.textContent = '';
+  }
 }
 
 async function gmSendCard(cardType, playerKey) {
