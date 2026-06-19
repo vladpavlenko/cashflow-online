@@ -1092,7 +1092,7 @@ async function startSession() {
 }
 
 function loadBoardSVG() {
-  fetch('board.svg')
+  fetch('assets/board.svg')
     .then(r => r.text())
     .then(svg => {
       document.getElementById('board-container').innerHTML = svg;
