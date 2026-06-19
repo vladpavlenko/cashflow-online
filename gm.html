@@ -29,17 +29,21 @@
 
     let _app, _db, _unsubscribe = null;
 
-    window._gmConnect = (roomCode) => {
+    function _initFirebase() {
       if (!_app) {
         _app = initializeApp(firebaseConfig);
         _db  = getDatabase(_app);
-        // Expose Firebase primitives for board.js
-        window._db        = _db;
-        window._fbSet     = set;
-        window._fbRef     = ref;
-        window._fbGet     = get;
-        window._fbOnValue = onValue;
       }
+      // Always expose — _gmCreateRoom may have initialised _app before _gmConnect ran
+      window._db        = _db;
+      window._fbSet     = set;
+      window._fbRef     = ref;
+      window._fbGet     = get;
+      window._fbOnValue = onValue;
+    }
+
+    window._gmConnect = (roomCode) => {
+      _initFirebase();
       if (_unsubscribe) _unsubscribe();
       const r = ref(_db, `rooms/${roomCode.toUpperCase()}/players`);
       _unsubscribe = onValue(r, snap => {
@@ -52,14 +56,14 @@
     };
 
     window._gmCreateRoom = async (roomCode) => {
-      if (!_app) {
-        _app = initializeApp(firebaseConfig);
-        _db  = getDatabase(_app);
-      }
+      _initFirebase();
       try {
         await set(ref(_db, `rooms/${roomCode.toUpperCase()}/_created`), Date.now());
         return true;
-      } catch(e) { return false; }
+      } catch(e) {
+        console.error('Firebase room create error:', e.code, e.message);
+        return false;
+      }
     };
 
     window._gmRemovePlayer = async (roomCode, playerKey) => {
@@ -615,7 +619,10 @@ async function createRoom() {
   inp.value = code.toUpperCase();
   if (window._gmCreateRoom) {
     const ok = await window._gmCreateRoom(code);
-    if (!ok) { alert(L('gmErrCreate')); return; }
+    if (!ok) {
+      alert(L('gmErrCreate') + '\n\nПеревір правила Firebase Realtime Database:\nFirebase Console → Realtime Database → Rules\nВстанови: ".read": true, ".write": true');
+      return;
+    }
   }
   openDashboard(code);
 }
