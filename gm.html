@@ -429,6 +429,29 @@
     #roll-result { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
     #player-decision-status { font-size: 14px; font-weight: 600; margin-top: 4px; }
 
+    /* ── CURRENT TURN BLOCK ── */
+    #current-turn-block {
+      padding: 14px 20px;
+      background: rgba(10,12,22,0.75);
+      border-bottom: 1px solid var(--border);
+    }
+    .ct-section-lbl {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+      color: var(--sub); margin-bottom: 10px;
+    }
+    #ct-player { font-size: 16px; font-weight: 700; color: var(--gold); margin-bottom: 6px; }
+    #ct-roll   { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+    #ct-card   { font-size: 14px; color: var(--blue); margin-bottom: 4px; }
+    #ct-decision { font-size: 14px; font-weight: 600; margin-bottom: 0; }
+    #btn-cancel-turn {
+      margin-top: 12px;
+      background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px; padding: 6px 16px; color: var(--red);
+      font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--body);
+      transition: background 0.15s;
+    }
+    #btn-cancel-turn:hover { background: rgba(239,68,68,0.2); }
+
     /* ── BOARD CONTAINER ── */
     #board-container {
       padding: 16px 20px;
@@ -565,6 +588,16 @@
 
   <!-- ── TURN CONTROLS ── -->
   <div id="turn-controls" class="hidden"></div>
+
+  <!-- ── CURRENT TURN BLOCK ── -->
+  <div id="current-turn-block" class="hidden">
+    <div class="ct-section-lbl">Поточний хід</div>
+    <div id="ct-player"></div>
+    <div id="ct-roll"     class="hidden"></div>
+    <div id="ct-card"     class="hidden"></div>
+    <div id="ct-decision" class="hidden"></div>
+    <button id="btn-cancel-turn" onclick="cancelTurn()">🚫 Скасувати хід</button>
+  </div>
 
   <!-- ── LAST ROLL RESULT ── -->
   <div id="last-roll-panel" class="hidden">
@@ -1057,6 +1090,8 @@ function closeGmLog() {
 // SESSION MANAGEMENT
 // ══════════════════════════════════════════════
 let _sessionId = null;
+let _currentTurn = null;
+let _cardTypeChosenLabel = null;
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1094,6 +1129,14 @@ async function startSession() {
     const statusEl = document.getElementById('card-request-status');
     const label = CARD_TYPE_LABELS[req.cardType] || req.cardType;
 
+    _cardTypeChosenLabel = label;
+
+    const ctCard = document.getElementById('ct-card');
+    if (ctCard) {
+      ctCard.textContent = `📋 Обрав: ${label}`;
+      ctCard.classList.remove('hidden');
+    }
+
     if (statusEl) {
       statusEl.textContent = `Гравець обрав: ${label} — відправляємо...`;
       statusEl.style.color = 'var(--text)';
@@ -1124,6 +1167,8 @@ function loadBoardSVG() {
 function onSessionUpdate(session) {
   if (!session) return;
 
+  _currentTurn = session.currentTurn || null;
+
   document.getElementById('sess-round').textContent = session.round || 1;
 
   const players = session.players || {};
@@ -1148,6 +1193,73 @@ function onSessionUpdate(session) {
     document.getElementById('player-decision-status').textContent =
       dec.decision === 'accept' ? '✅ Гравець прийняв' : '❌ Гравець відмовився';
   }
+
+  updateCurrentTurnBlock(session, players);
+}
+
+function updateCurrentTurnBlock(session, players) {
+  const block = document.getElementById('current-turn-block');
+  const hasInfo = _currentTurn || session.lastRoll || session.playerDecision;
+  if (!hasInfo) {
+    block.classList.add('hidden');
+    return;
+  }
+  block.classList.remove('hidden');
+
+  const playerKey = _currentTurn || session.lastRoll?.playerKey || session.playerDecision?.playerKey;
+  const name = players[playerKey]?.playerName || playerKey || '—';
+
+  const ctPlayer = document.getElementById('ct-player');
+  if (_currentTurn) {
+    ctPlayer.textContent = `⏳ Ходить: ${name}`;
+    ctPlayer.style.color = 'var(--gold)';
+  } else {
+    ctPlayer.textContent = `🎲 Ходив: ${name}`;
+    ctPlayer.style.color = 'var(--text)';
+  }
+
+  const ctRoll = document.getElementById('ct-roll');
+  if (session.lastRoll) {
+    const r = session.lastRoll;
+    ctRoll.textContent = `🎲 Кинув: ${r.dice} → ${r.cell?.label || '?'} (кл.${r.position})`;
+    ctRoll.classList.remove('hidden');
+  } else {
+    ctRoll.classList.add('hidden');
+  }
+
+  const ctCard = document.getElementById('ct-card');
+  if (_cardTypeChosenLabel) {
+    ctCard.textContent = `📋 Обрав: ${_cardTypeChosenLabel}`;
+    ctCard.classList.remove('hidden');
+  } else if (session.lastRoll?.cell?.type === 'dela' || session.lastRoll?.cell?.type === 'trening') {
+    ctCard.textContent = '🎴 Обирає тип картки...';
+    ctCard.classList.remove('hidden');
+  } else {
+    ctCard.classList.add('hidden');
+  }
+
+  const ctDecision = document.getElementById('ct-decision');
+  if (session.playerDecision) {
+    const dec = session.playerDecision.decision;
+    ctDecision.textContent = dec === 'accept' ? '✅ Рішення: Прийняв' : '❌ Рішення: Відмовився';
+    ctDecision.style.color = dec === 'accept' ? 'var(--green)' : 'var(--red)';
+    ctDecision.classList.remove('hidden');
+  } else {
+    ctDecision.classList.add('hidden');
+  }
+}
+
+async function cancelTurn() {
+  if (!_sessionId || !window._db) return;
+  _cardTypeChosenLabel = null;
+  await Promise.all([
+    window._fbSet(window._fbRef(window._db, `sessions/${_sessionId}/currentTurn`), null),
+    window._fbSet(window._fbRef(window._db, `sessions/${_sessionId}/cardTypeRequest`), null),
+    window._fbSet(window._fbRef(window._db, `sessions/${_sessionId}/currentCard`), null),
+  ]);
+  document.getElementById('current-turn-block').classList.add('hidden');
+  document.getElementById('last-roll-panel').classList.add('hidden');
+  document.getElementById('player-decision-status').textContent = '';
 }
 
 function renderTurnControls(players) {
@@ -1159,22 +1271,28 @@ function renderTurnControls(players) {
     if (shareEl) shareEl.textContent = _sessionId || '—';
     return;
   }
-  el.innerHTML = entries.map(([key, p]) => `
-    <div class="player-turn-row">
-      <span>${p.playerName || key} · $${p.cash || 0} · кл.${p.position || 0}</span>
-      <button onclick="grantTurn('${key}')"
-              ${p.online === false ? 'disabled title="Офлайн"' : ''}>
-        ▶ Хід
-      </button>
-    </div>
-  `).join('');
+  const turnActive = !!_currentTurn;
+  el.innerHTML = entries.map(([key, p]) => {
+    const isCurrentPlayer = _currentTurn === key;
+    const btnDisabled = turnActive || p.online === false;
+    const badge = isCurrentPlayer
+      ? `<span style="font-size:12px;color:var(--gold);font-weight:600;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);border-radius:6px;padding:3px 10px">⏳ Ходить...</span>`
+      : `<button onclick="grantTurn('${key}')" ${btnDisabled ? `disabled title="${p.online === false ? 'Офлайн' : 'Хід вже йде'}"` : ''}>▶ Хід</button>`;
+    return `
+      <div class="player-turn-row">
+        <span>${p.playerName || key} · $${p.cash || 0} · кл.${p.position || 0}</span>
+        ${badge}
+      </div>`;
+  }).join('');
 }
 
 async function grantTurn(playerKey) {
   if (!window._db || !_sessionId) return;
+  _cardTypeChosenLabel = null;
   await window._fbGrantTurn(window._db, _sessionId, playerKey);
   document.getElementById('last-roll-panel').classList.add('hidden');
   document.getElementById('player-decision-status').textContent = '';
+  document.getElementById('card-request-status').textContent = '';
 }
 
 let _lastAutoSentRollTs = null;
