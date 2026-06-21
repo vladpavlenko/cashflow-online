@@ -15,7 +15,7 @@
 
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-    import { getDatabase, ref, set, get, onValue } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+    import { getDatabase, ref, set, get, onValue, update } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
     const firebaseConfig = {
       apiKey: "AIzaSyAOjnui8wVleQ-pNbGculhezKHrnEgLQcw",
@@ -34,7 +34,8 @@
       window._fbSet     = set;
       window._fbRef     = ref;
       window._fbGet     = get;
-      window._fbOnValue = onValue;
+      window._fbOnValue  = onValue;
+      window._fbUpdate   = update;
     } catch(e) {
       console.warn('Firebase init failed:', e.message);
     }
@@ -348,12 +349,15 @@
 </div>
 
 <script>
-let _db          = null;
-let _sessionId   = null;
-let _myPlayerKey = null;
-let _myName      = null;
-let _myTurn      = false;
-let _state       = 'lobby'; // 'lobby'|'waiting'|'my_turn'|'rolled'|'card'
+let _db           = null;
+let _sessionId    = null;
+let _myPlayerKey  = null;
+let _myName       = null;
+let _myTurn       = false;
+let _state        = 'lobby'; // 'lobby'|'waiting'|'my_turn'|'rolled'|'card'
+let _decided      = false;
+let _cardModalOpen = false;
+let _currentCell  = null;
 
 const CARD_CHOICES = {
   dela: [
@@ -432,36 +436,73 @@ async function joinGame() {
 }
 
 function startListeners() {
-  window._fbListenTurn(_db, _sessionId, _myPlayerKey, (isMyTurn) => {
-    _myTurn = isMyTurn;
-    if (isMyTurn) {
-      setState('my_turn');
-    } else {
-      // Close card-type modal if GM cancelled or switched turns
-      const modal = document.getElementById('card-type-modal');
-      if (!modal.classList.contains('hidden')) {
-        modal.classList.add('hidden');
-      }
-      if (_state === 'my_turn' || _state === 'rolled') {
-        setState('waiting');
-      }
-    }
-  });
-
-  window._fbListenCard(_db, _sessionId, _myPlayerKey, (data) => {
-    if (data?.card) showCard(data.card, data.cardType);
-  });
-
+  // Single listener on full session node — drives all phase transitions
   window._fbOnValue(window._fbRef(_db, `sessions/${_sessionId}`), (snap) => {
     const session = snap.val();
     if (!session) return;
+
     document.getElementById('hdr-round').textContent = `Раунд ${session.round || 1}`;
-    // Скинути картку і результат якщо GM розпочав новий хід
-    if (!session.currentCard && _state === 'card') {
-      setState('waiting');
+
+    const phase    = session.turnPhase || null;
+    const isMyTurn = session.currentTurn === _myPlayerKey;
+
+    if (phase === null) {
+      _decided       = false;
+      _cardModalOpen = false;
+      _currentCell   = null;
+      document.getElementById('card-type-modal').classList.add('hidden');
+      if (_state !== 'lobby') setState('waiting');
+      return;
+    }
+
+    if (!isMyTurn) {
+      document.getElementById('card-type-modal').classList.add('hidden');
+      _cardModalOpen = false;
+      if (_state === 'my_turn' || _state === 'rolled') setState('waiting');
+      return;
+    }
+
+    // It's my turn — react to phase
+    _myTurn = (phase === 'rolling');
+
+    if (phase === 'rolling') {
+      setState('my_turn');
+
+    } else if (phase === 'choosing') {
+      const roll = session.lastRoll;
+      if (roll) {
+        document.getElementById('roll-dice-val').textContent  = roll.dice;
+        document.getElementById('roll-cell-name').textContent = roll.cell?.label || '?';
+        _currentCell = roll.cell;
+      }
+      setState('rolled');
+      if (_currentCell && (_currentCell.type === 'dela' || _currentCell.type === 'trening') && !_cardModalOpen) {
+        showCardTypeModal(_currentCell.type, _currentCell.label);
+      }
+
+    } else if (phase === 'waiting_card') {
+      document.getElementById('card-type-modal').classList.add('hidden');
+      _cardModalOpen = false;
+      const statusEl = document.getElementById('turn-status');
+      statusEl.className   = 'status-waiting';
+      statusEl.textContent = '⏳ Чекаємо картку від GM...';
+
+    } else if (phase === 'deciding') {
+      if (!_decided) {
+        const cardData = session.currentCard;
+        if (cardData?.card) showCard(cardData.card, cardData.cardType);
+      }
+
+    } else if (phase === 'done') {
+      if (_state === 'card' && !_decided) {
+        document.getElementById('card-actions').classList.add('hidden');
+        document.getElementById('card-decided').classList.remove('hidden');
+        document.getElementById('decided-text').textContent = 'Хід завершено';
+      }
     }
   });
 
+  // Player data — cash and state panel
   window._fbOnValue(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), (snap) => {
     const p = snap.val();
     if (!p) return;
@@ -510,7 +551,7 @@ function setState(state) {
 }
 
 async function rollDice() {
-  if (!_myTurn || _state !== 'my_turn') return;
+  if (_state !== 'my_turn') return;
 
   const btn = document.getElementById('btn-roll');
   btn.disabled = true;
@@ -533,6 +574,7 @@ function showCardTypeModal(cellType, cellLabel) {
   const choices = CARD_CHOICES[cellType];
   if (!choices) return;
 
+  _cardModalOpen = true;
   document.getElementById('modal-cell-label').textContent = cellLabel || cellType.toUpperCase();
 
   const grid = document.getElementById('card-type-grid');
@@ -549,19 +591,24 @@ function showCardTypeModal(cellType, cellLabel) {
 
 async function playerChooseCardType(cardType) {
   document.getElementById('card-type-modal').classList.add('hidden');
+  _cardModalOpen = false;
 
   const statusEl = document.getElementById('turn-status');
-  statusEl.className = 'status-waiting';
+  statusEl.className   = 'status-waiting';
   statusEl.textContent = '⏳ Чекаємо картку від GM...';
 
-  await window._fbSet(
-    window._fbRef(_db, `sessions/${_sessionId}/cardTypeRequest`),
-    { playerKey: _myPlayerKey, cardType, ts: Date.now() }
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}`),
+    {
+      turnPhase:       'waiting_card',
+      cardTypeRequest: { playerKey: _myPlayerKey, cardType, ts: Date.now() },
+    }
   );
 }
 
 function cancelCardChoice() {
   document.getElementById('card-type-modal').classList.add('hidden');
+  _cardModalOpen = false;
 }
 
 function showCard(card, cardType) {
@@ -596,13 +643,13 @@ function showCard(card, cardType) {
 }
 
 async function decide(decision) {
+  _decided = true;
   await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, decision);
 
   document.getElementById('card-actions').classList.add('hidden');
   document.getElementById('card-decided').classList.remove('hidden');
   document.getElementById('decided-text').textContent =
     decision === 'accept' ? '✅ Ти прийняв' : '❌ Ти відмовився';
-  // card-area stays visible until GM grants next turn
 }
 
 function renderMyState(p) {

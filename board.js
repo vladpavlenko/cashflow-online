@@ -128,11 +128,14 @@ window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
 };
 
 window._fbGrantTurn = async (db, sessionId, playerKey) => {
-  const set = window._fbSet, ref = window._fbRef;
-  await set(ref(db, `sessions/${sessionId}/currentTurn`),     playerKey);
-  await set(ref(db, `sessions/${sessionId}/lastRoll`),        null);
-  await set(ref(db, `sessions/${sessionId}/currentCard`),     null);
-  await set(ref(db, `sessions/${sessionId}/playerDecision`),  null);
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}`), {
+    currentTurn:     playerKey,
+    turnPhase:       'rolling',
+    lastRoll:        null,
+    cardTypeRequest: null,
+    currentCard:     null,
+    playerDecision:  null,
+  });
 };
 
 window._fbRollDice = async (db, sessionId, playerKey) => {
@@ -154,11 +157,10 @@ window._fbRollDice = async (db, sessionId, playerKey) => {
     await set(ref(db, `sessions/${sessionId}/round`), (rSnap.val() || 1) + 1);
   }
 
-  await set(ref(db, `sessions/${sessionId}/lastRoll`), {
-    playerKey, dice, position: newPos, cell,
+  await window._fbUpdate(ref(db, `sessions/${sessionId}`), {
+    turnPhase: 'choosing',
+    lastRoll:  { playerKey, dice, position: newPos, cell, ts: Date.now() },
   });
-
-  await set(ref(db, `sessions/${sessionId}/currentTurn`), null);
 
   return { dice, newPos, cell };
 };
@@ -167,27 +169,17 @@ window._fbListenSession = (db, sessionId, callback) => {
   window._fbOnValue(window._fbRef(db, `sessions/${sessionId}`), snap => callback(snap.val()));
 };
 
-window._fbListenTurn = (db, sessionId, playerKey, callback) => {
-  window._fbOnValue(window._fbRef(db, `sessions/${sessionId}/currentTurn`), snap => {
-    callback(snap.val() === playerKey);
-  });
-};
-
-window._fbListenCard = (db, sessionId, playerKey, callback) => {
-  window._fbOnValue(window._fbRef(db, `sessions/${sessionId}/currentCard`), snap => {
-    const data = snap.val();
-    if (data && data.playerKey === playerKey) callback(data);
-  });
-};
-
 window._fbPlayerDecision = async (db, sessionId, playerKey, decision) => {
-  await window._fbSet(window._fbRef(db, `sessions/${sessionId}/playerDecision`), {
-    playerKey, decision, ts: Date.now(),
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}`), {
+    turnPhase:      'done',
+    playerDecision: { playerKey, decision, ts: Date.now() },
   });
 };
 
 window._fbSetCard = async (db, sessionId, playerKey, cardType, card) => {
-  await window._fbSet(window._fbRef(db, `sessions/${sessionId}/currentCard`), {
-    playerKey, cardType, card, drawnAt: Date.now(),
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}`), {
+    turnPhase:       'deciding',
+    currentCard:     { playerKey, cardType, card, drawnAt: Date.now() },
+    cardTypeRequest: null,
   });
 };
