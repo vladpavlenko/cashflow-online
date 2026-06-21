@@ -12,6 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="cards.js"></script>
   <script src="board.js"></script>
+  <script src="engine.js"></script>
 
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -69,21 +70,16 @@
       font-family: var(--body);
       min-height: 100vh;
       min-height: -webkit-fill-available;
-      padding: 20px 16px 48px;
+      padding: 20px 16px calc(76px + env(safe-area-inset-bottom, 0px));
       max-width: 480px;
       margin: 0 auto;
     }
     @media (min-width: 480px) {
-      body { max-width: 560px; padding: 28px 24px 56px; font-size: 17px; }
-      .logo { font-size: 42px; }
-      #hdr-name  { font-size: 18px; }
-      #hdr-cash  { font-size: 26px; }
-      #turn-status { font-size: 16px; }
-      #btn-roll  { font-size: 22px; padding: 24px; }
+      body { max-width: 560px; padding: 28px 24px calc(76px + env(safe-area-inset-bottom, 0px)); font-size: 17px; }
     }
     .hidden { display: none !important; }
 
-    /* ── Logo ── */
+    /* ── Logo / Lobby ── */
     .logo {
       font-family: Georgia, serif; font-size: 36px; font-weight: 700;
       color: var(--gold); text-align: center; margin-bottom: 6px; line-height: 1.1;
@@ -93,11 +89,8 @@
       color: var(--sub); font-family: var(--body); font-weight: 400;
       text-transform: uppercase; margin-top: 4px;
     }
-
-    /* ── Lobby screen ── */
     #screen-lobby { padding-top: 60px; }
     .logo-wrap { margin-bottom: 36px; }
-
     .form-card {
       background: var(--surf); border: 1px solid var(--bord);
       border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 12px;
@@ -128,14 +121,76 @@
       padding: 10px 0 14px; margin-bottom: 14px;
       border-bottom: 1px solid var(--bord);
     }
-    #hdr-name  { font-size: 16px; font-weight: 700; }
-    #hdr-round { font-size: 12px; color: var(--sub); }
-    #hdr-cash  { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--gold); }
+    #hdr-name  { font-size: 15px; font-weight: 700; }
+    #hdr-cash  { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--gold); }
+    .hdr-badges { display: flex; gap: 6px; align-items: center; }
+    .hdr-badge {
+      font-size: 11px; color: var(--sub); background: var(--elev);
+      border: 1px solid var(--bord); border-radius: 8px; padding: 3px 8px;
+      font-family: var(--mono);
+    }
 
-    /* ── Turn status ── */
+    /* ── Tab content ── */
+    .tab-content { display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── Bottom tab bar ── */
+    #tab-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surf); border-top: 1px solid var(--bord);
+      display: flex; z-index: 100;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .tab-btn {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 3px;
+      background: none; border: none; color: var(--sub);
+      font-family: var(--body); font-size: 10px; font-weight: 600;
+      cursor: pointer; padding: 10px 0; transition: color 0.15s;
+    }
+    .tab-btn.active { color: var(--gold); }
+    .tab-btn svg {
+      width: 22px; height: 22px; fill: none;
+      stroke: currentColor; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* ── Section card ── */
+    .section-card {
+      background: var(--surf); border: 1px solid var(--bord);
+      border-radius: 14px; padding: 14px;
+    }
+    .section-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+      color: var(--sub); margin-bottom: 10px;
+    }
+
+    /* ── Tab 1 — Звіт ── */
+    .big-cash {
+      font-family: var(--mono); font-size: 40px; font-weight: 700;
+      color: var(--gold); line-height: 1.1;
+    }
+    .cash-debts { font-size: 12px; color: var(--sub); margin-top: 4px; }
+    .passive-amount { font-size: 18px; font-weight: 700; }
+    .progress-bar-wrap {
+      height: 6px; background: var(--elev); border-radius: 3px;
+      margin-top: 8px; overflow: hidden;
+    }
+    .progress-bar { height: 100%; background: var(--blue); border-radius: 3px; transition: width 0.4s; }
+    .balance-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px; background: var(--surf);
+      border: 1px solid var(--bord); border-radius: 14px; padding: 14px;
+    }
+    .bal-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .bal-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--sub); }
+    .bal-val { font-family: var(--mono); font-size: 15px; font-weight: 700; }
+    .bal-val.green { color: var(--green); }
+    .bal-val.red   { color: var(--red); }
+
+    /* ── Turn status / dice ── */
     #turn-status {
       text-align: center; padding: 14px; border-radius: 14px;
-      font-size: 15px; font-weight: 600; margin-bottom: 12px;
+      font-size: 15px; font-weight: 600;
     }
     .status-waiting {
       background: var(--surf); color: var(--sub); border: 1px solid var(--bord);
@@ -149,13 +204,11 @@
       0%,100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); }
       50%      { box-shadow: 0 0 0 8px rgba(245,166,35,0.15); }
     }
-
-    /* ── Dice button ── */
     #btn-roll {
       width: 100%; padding: 20px; border: none; border-radius: 16px;
       background: var(--gold); color: #08090f;
       font-family: var(--body); font-size: 20px; font-weight: 800;
-      cursor: pointer; margin-bottom: 12px;
+      cursor: pointer;
       box-shadow: 0 4px 24px rgba(245,166,35,0.35);
       transition: transform 0.1s, opacity 0.1s;
     }
@@ -164,12 +217,10 @@
       background: var(--elev); color: var(--sub);
       box-shadow: none; cursor: not-allowed; transform: none;
     }
-
-    /* ── Roll result ── */
     #roll-result {
       text-align: center; padding: 20px;
       background: var(--surf); border: 1px solid var(--bord); border-radius: 14px;
-      margin-bottom: 12px; animation: fadeUp 0.3s ease;
+      animation: fadeUp 0.3s ease;
     }
     @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
     #roll-dice-val {
@@ -177,11 +228,9 @@
       color: var(--gold); line-height: 1;
     }
     #roll-cell-name { font-size: 18px; font-weight: 700; margin-top: 8px; }
-
-    /* ── Card area ── */
     #card-area {
       background: var(--surf); border: 1.5px solid var(--bord);
-      border-radius: 18px; padding: 18px; margin-bottom: 12px;
+      border-radius: 18px; padding: 18px;
       animation: fadeUp 0.3s ease;
     }
     #card-type-label {
@@ -194,7 +243,6 @@
       white-space: pre-line; margin-bottom: 8px;
     }
     #card-requirements { font-size: 12px; color: var(--red); margin-bottom: 14px; min-height: 0; }
-
     #card-actions { display: flex; gap: 10px; }
     #btn-accept {
       flex: 1; padding: 14px; border-radius: 13px;
@@ -213,23 +261,91 @@
     #btn-decline:active { background: rgba(239,68,68,0.15); }
     #card-decided { text-align: center; padding: 14px; font-size: 15px; font-weight: 600; color: var(--sub); }
 
-    /* ── My state ── */
-    #my-state {
-      background: var(--surf); border: 1px solid var(--bord);
-      border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 6px;
+    /* ── Tab 2 — Доходи ── */
+    .income-card {
+      border-bottom: 1px solid var(--bord); padding: 10px 0;
     }
-    .state-section-title {
-      font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
-      color: var(--sub); padding-bottom: 4px;
+    .income-card:last-child { border-bottom: none; }
+    .income-card-row1 {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
     }
-    .state-row {
+    .income-name { font-size: 14px; font-weight: 700; flex: 1; min-width: 0; }
+    .income-final { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--green); white-space: nowrap; }
+    .fire-btn {
+      background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3);
+      color: var(--red); border-radius: 6px; padding: 2px 7px;
+      font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1.4;
+      flex-shrink: 0;
+    }
+    .income-card-row2 { font-size: 12px; color: var(--sub); margin-top: 3px; }
+    .income-card-row3 { font-size: 12px; color: var(--sub); margin-top: 2px; font-family: var(--mono); }
+    .totals-row {
       display: flex; justify-content: space-between;
       font-size: 13px; padding: 6px 0;
       border-bottom: 1px solid var(--bord);
     }
-    .state-row:last-child { border-bottom: none; }
-    .state-lbl { color: var(--sub); }
-    .state-val  { font-weight: 600; font-family: var(--mono); }
+    .totals-row:last-child { border-bottom: none; font-weight: 700; font-size: 14px; }
+    .totals-row .mono { font-family: var(--mono); color: var(--green); }
+
+    /* ── Tab 3 — Витрати ── */
+    .exp-row {
+      display: flex; justify-content: space-between;
+      font-size: 13px; padding: 7px 0;
+      border-bottom: 1px solid var(--bord);
+    }
+    .exp-row:last-child { border-bottom: none; }
+    .exp-row .mono { font-family: var(--mono); }
+    .exp-divider { border-top: 1px solid var(--bord); margin: 4px 0; }
+    .exp-row-total { font-weight: 700; font-size: 13px; }
+    .loan-block { margin-bottom: 14px; }
+    .loan-block:last-child { margin-bottom: 0; }
+    .loan-header {
+      font-size: 13px; font-weight: 700; margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .loan-limit { font-size: 11px; color: var(--sub); font-family: var(--mono); font-weight: 400; }
+    .loan-row {
+      display: flex; justify-content: space-between;
+      font-size: 12px; padding: 5px 0;
+      border-bottom: 1px solid var(--bord);
+    }
+    .loan-row:last-child { border-bottom: none; }
+    .loan-row .mono { font-family: var(--mono); }
+    .red  { color: var(--red); }
+    .green { color: var(--green); }
+
+    /* ── Tab 4 — Навички ── */
+    .skills-header {
+      display: grid; grid-template-columns: 1fr auto auto;
+      gap: 8px; font-size: 9px; text-transform: uppercase;
+      letter-spacing: 1.5px; color: var(--sub); padding-bottom: 6px;
+      border-bottom: 1px solid var(--bord); margin-bottom: 4px;
+    }
+    .skills-row {
+      display: grid; grid-template-columns: 1fr auto auto;
+      gap: 8px; font-size: 13px; padding: 7px 0;
+      border-bottom: 1px solid var(--bord); align-items: center;
+    }
+    .skills-row:last-child { border-bottom: none; }
+    .skills-row span:last-child { font-family: var(--mono); min-width: 40px; text-align: right; }
+    .train-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .train-table {
+      width: 100%; border-collapse: collapse; font-size: 12px;
+    }
+    .train-table th {
+      text-align: left; font-size: 9px; text-transform: uppercase;
+      letter-spacing: 1.5px; color: var(--sub); padding: 0 8px 8px 0;
+      white-space: nowrap;
+    }
+    .train-table td {
+      padding: 6px 8px 6px 0; border-bottom: 1px solid var(--bord);
+      font-family: var(--mono); white-space: nowrap;
+    }
+    .train-table td:first-child { font-family: var(--body); }
+    .train-table tr:last-child td { border-bottom: none; font-weight: 700; }
+    .train-total td { border-top: 1px solid var(--bord); }
+    .pct-pos { color: var(--green); }
+    .pct-zero { color: var(--sub); }
 
     /* ── Card Type Modal ── */
     #card-type-modal {
@@ -238,12 +354,8 @@
       padding: 32px 16px 48px;
     }
     #card-type-modal > * { width: 100%; max-width: 480px; }
-    @media (min-width: 480px) {
-      #card-type-modal > * { max-width: 560px; }
-    }
-    #card-type-grid {
-      display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;
-    }
+    @media (min-width: 480px) { #card-type-modal > * { max-width: 560px; } }
+    #card-type-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
     .card-choice-btn {
       background: var(--surf); border: 1.5px solid var(--bord);
       border-radius: 14px; overflow: hidden; cursor: pointer;
@@ -273,19 +385,15 @@
 </head>
 <body>
 
-<!-- ══ LOBBY SCREEN ══ -->
+<!-- ══ LOBBY ══ -->
 <div id="screen-lobby">
   <div class="logo-wrap">
     <div class="logo">CashFlow<span>ONLINE</span></div>
   </div>
-
   <div class="form-card">
-    <input id="inp-name" type="text"
-           placeholder="Твоє ім'я" maxlength="20" autocomplete="off">
-    <input id="inp-code" type="text"
-           placeholder="Код сесії (6 символів)"
-           maxlength="6" autocomplete="off"
-           oninput="this.value=this.value.toUpperCase()">
+    <input id="inp-name" type="text" placeholder="Твоє ім'я" maxlength="20" autocomplete="off">
+    <input id="inp-code" type="text" placeholder="Код сесії (6 символів)"
+           maxlength="6" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
     <button id="btn-join" onclick="joinGame()">Увійти в гру →</button>
     <div id="join-error" class="error hidden"></div>
   </div>
@@ -294,48 +402,168 @@
 <!-- ══ GAME SCREEN ══ -->
 <div id="screen-game" class="hidden">
 
+  <!-- Compact header -->
   <div id="game-header">
     <div id="hdr-name"></div>
-    <div id="hdr-round">Раунд 1</div>
+    <div class="hdr-badges">
+      <span id="hdr-round" class="hdr-badge">Раунд 1</span>
+      <span id="hdr-session" class="hdr-badge">—</span>
+    </div>
     <div id="hdr-cash">$500</div>
   </div>
 
-  <div id="turn-status" class="status-waiting">
-    ⏳ Очікуй свого ходу...
-  </div>
+  <!-- ── Tab: Звіт ── -->
+  <div id="tab-report" class="tab-content">
 
-  <button id="btn-roll" onclick="rollDice()" disabled>
-    🎲 Кинути кубик
-  </button>
-
-  <div id="roll-result" class="hidden">
-    <div id="roll-dice-val"></div>
-    <div id="roll-cell-name"></div>
-  </div>
-
-  <div id="card-area" class="hidden">
-    <div id="card-type-label"></div>
-    <div id="card-name"></div>
-    <div id="card-details"></div>
-    <div id="card-requirements"></div>
-
-    <div id="card-actions">
-      <button id="btn-accept"  onclick="decide('accept')">✅ Прийняти</button>
-      <button id="btn-decline" onclick="decide('decline')">❌ Відмовитись</button>
+    <!-- Cash block -->
+    <div class="section-card">
+      <div class="section-label">Поточна готівка</div>
+      <div id="t1-cash" class="big-cash">$500</div>
+      <div id="t1-debts" class="cash-debts">Банк: $0 · МКО: $0</div>
     </div>
 
-    <div id="card-decided" class="hidden">
-      <div id="decided-text"></div>
+    <!-- Passive income -->
+    <div class="section-card">
+      <div class="section-label">Пасивний дохід</div>
+      <div id="t1-passive-amt" class="passive-amount" style="color:var(--sub);font-size:14px">Пасивного доходу ще немає</div>
+      <div id="t1-passive-bar-wrap" class="progress-bar-wrap hidden">
+        <div id="t1-passive-bar" class="progress-bar" style="width:0%"></div>
+      </div>
     </div>
-  </div>
 
-  <div id="my-state">
-    <div id="my-incomes"></div>
-    <div id="my-courses"></div>
-    <div id="my-loans"></div>
-  </div>
+    <!-- Balance grid -->
+    <div class="balance-grid">
+      <div class="bal-col">
+        <div class="bal-lbl">Дохід</div>
+        <div id="t1-income" class="bal-val green">$0</div>
+      </div>
+      <div class="bal-col">
+        <div class="bal-lbl">Витрати</div>
+        <div id="t1-expense" class="bal-val red">$0</div>
+      </div>
+      <div class="bal-col">
+        <div class="bal-lbl">Сальдо</div>
+        <div id="t1-balance" class="bal-val">$0</div>
+      </div>
+    </div>
 
-</div>
+    <!-- Turn status -->
+    <div id="turn-status" class="status-waiting">⏳ Очікуй свого ходу...</div>
+    <button id="btn-roll" onclick="rollDice()" disabled>🎲 Кинути кубик</button>
+
+    <div id="roll-result" class="hidden">
+      <div id="roll-dice-val"></div>
+      <div id="roll-cell-name"></div>
+    </div>
+
+    <div id="card-area" class="hidden">
+      <div id="card-type-label"></div>
+      <div id="card-name"></div>
+      <div id="card-details"></div>
+      <div id="card-requirements"></div>
+      <div id="card-actions">
+        <button id="btn-accept"  onclick="decide('accept')">✅ Прийняти</button>
+        <button id="btn-decline" onclick="decide('decline')">❌ Відмовитись</button>
+      </div>
+      <div id="card-decided" class="hidden">
+        <div id="decided-text"></div>
+      </div>
+    </div>
+
+  </div><!-- /tab-report -->
+
+  <!-- ── Tab: Доходи ── -->
+  <div id="tab-income" class="tab-content hidden">
+
+    <div class="section-card">
+      <div class="section-label">Активні доходи</div>
+      <div id="t2-active-list">
+        <div style="color:var(--sub);font-size:14px">Доходів ще немає.</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">Пасивні доходи</div>
+      <div id="t2-passive-list">
+        <div style="color:var(--sub);font-size:14px">Пасивних доходів немає.</div>
+      </div>
+    </div>
+
+    <div class="section-card" id="t2-totals">
+      <div class="totals-row"><span>Усього активних:</span><span class="mono">$0 / міс</span></div>
+      <div class="totals-row"><span>Усього пасивних:</span><span class="mono">$0 / міс</span></div>
+      <div class="totals-row"><span>Загальний дохід:</span><span class="mono">$0 / міс</span></div>
+    </div>
+
+  </div><!-- /tab-income -->
+
+  <!-- ── Tab: Витрати ── -->
+  <div id="tab-expenses" class="tab-content hidden">
+
+    <div class="section-card">
+      <div class="section-label">Постійні витрати</div>
+      <div id="t3-family-list"></div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">Кредити</div>
+      <div id="t3-loans-list"></div>
+    </div>
+
+    <div class="section-card" id="t3-total-card">
+      <div id="t3-total-row" class="exp-row exp-row-total">
+        <span>Усього витрат:</span>
+        <span class="mono red">$0 / міс</span>
+      </div>
+    </div>
+
+  </div><!-- /tab-expenses -->
+
+  <!-- ── Tab: Навички ── -->
+  <div id="tab-skills" class="tab-content hidden">
+
+    <div class="section-card">
+      <div class="section-label">Курси</div>
+      <div id="t4-courses">
+        <div style="color:var(--sub);font-size:14px">Курсів ще немає.</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">Тренінги</div>
+      <div id="t4-trainings">
+        <div style="color:var(--sub);font-size:14px">Тренінгів ще немає.</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">Навчання</div>
+      <div style="color:var(--sub);font-size:14px">Розділ у розробці</div>
+    </div>
+
+  </div><!-- /tab-skills -->
+
+  <!-- ── Bottom tab bar ── -->
+  <nav id="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('report',this)">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>Звіт</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('income',this)">
+      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+      <span>Доходи</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('expenses',this)">
+      <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      <span>Витрати</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('skills',this)">
+      <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+      <span>Навички</span>
+    </button>
+  </nav>
+
+</div><!-- /screen-game -->
 
 <!-- ══ CARD TYPE MODAL ══ -->
 <div id="card-type-modal" class="hidden">
@@ -354,10 +582,11 @@ let _sessionId    = null;
 let _myPlayerKey  = null;
 let _myName       = null;
 let _myTurn       = false;
-let _state        = 'lobby'; // 'lobby'|'waiting'|'my_turn'|'rolled'|'card'
+let _state        = 'lobby';
 let _decided      = false;
 let _cardModalOpen = false;
 let _currentCell  = null;
+let _lastPlayerData = null;
 
 const CARD_CHOICES = {
   dela: [
@@ -388,19 +617,27 @@ const CARD_TYPE_LABELS = {
   poluchka: '🏁 День зарплати',
 };
 
+// ── Tab switching ──────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.getElementById('tab-' + tab).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ── Join ──────────────────────────────────────────────────────
 async function joinGame() {
   const name  = document.getElementById('inp-name').value.trim();
   const code  = document.getElementById('inp-code').value.trim().toUpperCase();
   const errEl = document.getElementById('join-error');
   errEl.classList.add('hidden');
 
-  if (!name)          { errEl.textContent = "Введи ім'я";              errEl.classList.remove('hidden'); return; }
-  if (code.length < 2) { errEl.textContent = 'Введи код сесії'; errEl.classList.remove('hidden'); return; }
-  if (!window._db)     { errEl.textContent = 'Firebase не підключено — перевір мережу'; errEl.classList.remove('hidden'); return; }
+  if (!name)           { errEl.textContent = "Введи ім'я";               errEl.classList.remove('hidden'); return; }
+  if (code.length < 2) { errEl.textContent = 'Введи код сесії';          errEl.classList.remove('hidden'); return; }
+  if (!window._db)     { errEl.textContent = 'Firebase не підключено';   errEl.classList.remove('hidden'); return; }
 
   _db = window._db;
 
-  // Перевірити чи існує сесія
   let snap;
   try {
     snap = await window._fbGet(window._fbRef(_db, `sessions/${code}/status`));
@@ -424,24 +661,24 @@ async function joinGame() {
     errEl.classList.remove('hidden'); return;
   }
 
-  // Зберегти для beforeunload
   window._mySessionId = _sessionId;
   window._myPlayerKey = _myPlayerKey;
 
   document.getElementById('screen-lobby').classList.add('hidden');
   document.getElementById('screen-game').classList.remove('hidden');
-  document.getElementById('hdr-name').textContent = _myName;
+  document.getElementById('hdr-name').textContent    = _myName;
+  document.getElementById('hdr-session').textContent = _sessionId;
 
   startListeners();
 }
 
+// ── Listeners ─────────────────────────────────────────────────
 function startListeners() {
-  // Single listener on full session node — drives all phase transitions
   window._fbOnValue(window._fbRef(_db, `sessions/${_sessionId}`), (snap) => {
     const session = snap.val();
     if (!session) return;
 
-    document.getElementById('hdr-round').textContent = `Раунд ${session.round || 1}`;
+    document.getElementById('hdr-round').textContent = `Р${session.round || 1}`;
 
     const phase    = session.turnPhase || null;
     const isMyTurn = session.currentTurn === _myPlayerKey;
@@ -462,7 +699,6 @@ function startListeners() {
       return;
     }
 
-    // It's my turn — react to phase
     _myTurn = (phase === 'rolling');
 
     if (phase === 'rolling') {
@@ -502,15 +738,15 @@ function startListeners() {
     }
   });
 
-  // Player data — cash and state panel
   window._fbOnValue(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), (snap) => {
     const p = snap.val();
     if (!p) return;
-    document.getElementById('hdr-cash').textContent = `$${Math.round(p.cash || 0)}`;
-    renderMyState(p);
+    document.getElementById('hdr-cash').textContent = `$${Math.round(p.cash || 0).toLocaleString()}`;
+    renderPlayerData(p);
   });
 }
 
+// ── State machine ─────────────────────────────────────────────
 function setState(state) {
   _state = state;
   const statusEl = document.getElementById('turn-status');
@@ -525,20 +761,17 @@ function setState(state) {
       statusEl.textContent = '⏳ Очікуй свого ходу...';
       rollBtn.disabled = true;
       break;
-
     case 'my_turn':
       statusEl.className   = 'status-my-turn';
       statusEl.textContent = '⚡ Твій хід! Кидай кубик';
       rollBtn.disabled = false;
       break;
-
     case 'rolled':
       statusEl.className   = 'status-waiting';
       statusEl.textContent = '🎲 Кубик кинуто — чекаємо картку...';
       rollBtn.disabled = true;
       document.getElementById('roll-result').classList.remove('hidden');
       break;
-
     case 'card':
       statusEl.className   = 'status-waiting';
       statusEl.textContent = '🃏 Прийми рішення по картці';
@@ -550,6 +783,7 @@ function setState(state) {
   }
 }
 
+// ── Dice roll ─────────────────────────────────────────────────
 async function rollDice() {
   if (_state !== 'my_turn') return;
 
@@ -570,6 +804,7 @@ async function rollDice() {
   }
 }
 
+// ── Card type modal ───────────────────────────────────────────
 function showCardTypeModal(cellType, cellLabel) {
   const choices = CARD_CHOICES[cellType];
   if (!choices) return;
@@ -599,10 +834,7 @@ async function playerChooseCardType(cardType) {
 
   await window._fbUpdate(
     window._fbRef(_db, `sessions/${_sessionId}`),
-    {
-      turnPhase:       'waiting_card',
-      cardTypeRequest: { playerKey: _myPlayerKey, cardType, ts: Date.now() },
-    }
+    { turnPhase: 'waiting_card', cardTypeRequest: { playerKey: _myPlayerKey, cardType, ts: Date.now() } }
   );
 }
 
@@ -611,10 +843,9 @@ function cancelCardChoice() {
   _cardModalOpen = false;
 }
 
+// ── Show card ─────────────────────────────────────────────────
 function showCard(card, cardType) {
-  document.getElementById('card-type-label').textContent =
-    CARD_TYPE_LABELS[cardType] || cardType;
-
+  document.getElementById('card-type-label').textContent = CARD_TYPE_LABELS[cardType] || cardType;
   document.getElementById('card-name').textContent = card.name || '—';
 
   let details = '';
@@ -645,53 +876,262 @@ function showCard(card, cardType) {
 async function decide(decision) {
   _decided = true;
   await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, decision);
-
   document.getElementById('card-actions').classList.add('hidden');
   document.getElementById('card-decided').classList.remove('hidden');
   document.getElementById('decided-text').textContent =
     decision === 'accept' ? '✅ Ти прийняв' : '❌ Ти відмовився';
 }
 
-function renderMyState(p) {
-  const incomesEl = document.getElementById('my-incomes');
-  const coursesEl = document.getElementById('my-courses');
-  const loansEl   = document.getElementById('my-loans');
+// ── Fire income ───────────────────────────────────────────────
+async function fireIncome(idx) {
+  const inc = (_lastPlayerData?.incomes || [])[idx];
+  if (!inc) return;
+  if (!confirm(`Звільнитись з "${inc.name || 'роботи'}"?`)) return;
+  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}/incomes`));
+  const arr  = snap.val() ? [...snap.val()] : [];
+  arr.splice(idx, 1);
+  await window._fbSet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}/incomes`), arr);
+}
 
+// ── renderPlayerData ──────────────────────────────────────────
+function renderPlayerData(p) {
+  _lastPlayerData = p;
+  _renderTab1(p);
+  _renderTab2(p);
+  _renderTab3(p);
+  _renderTab4(p);
+}
+
+function _fmtN(n) { return Math.round(n).toLocaleString(); }
+
+function _renderTab1(p) {
+  const cash    = Math.round(p.cash || 0);
+  const bank    = parseFloat(p.loans?.bankRem)  || 0;
+  const micro   = parseFloat(p.loans?.microRem) || 0;
+  const passive = totalPassiveInc(p);
+  const income  = totalInc(p);
+  const expense = totalExp(p);
+  const balance = bal(p);
+
+  document.getElementById('t1-cash').textContent = '$' + cash.toLocaleString();
+
+  const bankStr  = bank  > 0 ? `<span class="red">Банк: $${_fmtN(bank)}</span>`  : 'Банк: $0';
+  const microStr = micro > 0 ? `<span class="red">МКО: $${_fmtN(micro)}</span>`  : 'МКО: $0';
+  document.getElementById('t1-debts').innerHTML = bankStr + ' · ' + microStr;
+
+  const passiveEl  = document.getElementById('t1-passive-amt');
+  const barWrap    = document.getElementById('t1-passive-bar-wrap');
+  const bar        = document.getElementById('t1-passive-bar');
+  const GOAL       = 30000;
+  if (passive >= GOAL) {
+    passiveEl.innerHTML = `<span style="color:var(--gold)">$${_fmtN(passive)} / міс</span>&nbsp; 🎉 Ціль досягнута!`;
+    barWrap.classList.remove('hidden');
+    bar.style.width = '100%';
+    bar.style.background = 'var(--gold)';
+  } else if (passive > 0) {
+    const pct = Math.round((passive / GOAL) * 100);
+    passiveEl.innerHTML = `<span style="color:var(--blue)">$${_fmtN(passive)} / міс</span> <span style="color:var(--sub);font-size:12px">· ${pct}% до мети</span>`;
+    barWrap.classList.remove('hidden');
+    bar.style.width = pct + '%';
+    bar.style.background = 'var(--blue)';
+  } else {
+    passiveEl.textContent = 'Пасивного доходу ще немає';
+    passiveEl.style.color = 'var(--sub)';
+    passiveEl.style.fontSize = '14px';
+    barWrap.classList.add('hidden');
+  }
+
+  document.getElementById('t1-income').textContent  = '$' + _fmtN(income);
+  document.getElementById('t1-expense').textContent = '$' + _fmtN(expense);
+  const balEl = document.getElementById('t1-balance');
+  balEl.textContent = (balance >= 0 ? '+$' : '-$') + _fmtN(Math.abs(balance));
+  balEl.className   = 'bal-val ' + (balance >= 0 ? 'green' : 'red');
+}
+
+function _renderTab2(p) {
   const incomes = p.incomes || [];
-  incomesEl.innerHTML = incomes.length
-    ? `<div class="state-section-title">Доходи</div>` +
-      incomes.map(i =>
-        `<div class="state-row">
-           <span class="state-lbl">${i.name}</span>
-           <span class="state-val" style="color:var(--green)">$${i.basePay || i.pay}/міс</span>
-         </div>`
-      ).join('')
-    : `<div class="state-row"><span class="state-lbl" style="color:var(--sub)">Доходів ще немає</span></div>`;
+  const active  = incomes.filter(i => i.type !== 'passive');
+  const passive = incomes.filter(i => i.type === 'passive');
 
-  const courses = p.courses || [];
-  coursesEl.innerHTML = courses.length
-    ? `<div class="state-section-title" style="margin-top:6px">Курси</div>` +
-      courses.map(c =>
-        `<div class="state-row">
-           <span class="state-lbl">${c.name}</span>
-           <span class="state-val" style="color:var(--blue)">${c.field || ''}</span>
-         </div>`
-      ).join('')
-    : '';
+  if (active.length === 0) {
+    document.getElementById('t2-active-list').innerHTML =
+      '<div style="color:var(--sub);font-size:14px;padding:4px 0">Доходів ще немає. Зроби хід щоб отримати роботу або відкрити стартап.</div>';
+  } else {
+    document.getElementById('t2-active-list').innerHTML = active.map(inc => {
+      const idx     = incomes.indexOf(inc);
+      const m       = mult(p, inc);
+      const bonus   = addPay(p, inc);
+      const final   = fi(p, inc);
+      const showMult  = Math.abs(m - 1) > 0.001;
+      const showBonus = bonus > 0;
+      const typeLabel = inc.type === 'employee' ? 'Найманий' :
+                        inc.type === 'self'     ? 'На себе'  : inc.type;
+      const fieldStr  = [inc.field, inc.subField].filter(Boolean).join(' · ');
+      const canFire   = inc.type === 'employee' || inc.type === 'self';
+      return `<div class="income-card">
+        <div class="income-card-row1">
+          <span class="income-name">${inc.name || '—'}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="income-final">$${_fmtN(final)}</span>
+            ${canFire ? `<button class="fire-btn" onclick="fireIncome(${idx})">×</button>` : ''}
+          </div>
+        </div>
+        <div class="income-card-row2">${typeLabel}${fieldStr ? ' · ' + fieldStr : ''}</div>
+        <div class="income-card-row3">Базова: $${inc.basePay || inc.pay || 0}${showMult ? ` · ×${m.toFixed(2)} (множник)` : ''}${showBonus ? ` · +$${bonus} (курси)` : ''}</div>
+      </div>`;
+    }).join('');
+  }
 
-  const bank  = p.loans?.bankRem  || 0;
-  const micro = p.loans?.microRem || 0;
-  loansEl.innerHTML = (bank || micro)
-    ? `<div class="state-section-title" style="margin-top:6px">Борги</div>
-       ${bank  ? `<div class="state-row">
-                    <span class="state-lbl">Банк</span>
-                    <span class="state-val" style="color:var(--red)">$${bank}</span>
-                  </div>` : ''}
-       ${micro ? `<div class="state-row">
-                    <span class="state-lbl">Мікрокредит</span>
-                    <span class="state-val" style="color:var(--red)">$${micro}</span>
-                  </div>` : ''}`
-    : '';
+  if (passive.length === 0) {
+    document.getElementById('t2-passive-list').innerHTML =
+      '<div style="color:var(--sub);font-size:14px;padding:4px 0">Пасивних доходів немає.</div>';
+  } else {
+    document.getElementById('t2-passive-list').innerHTML = passive.map(inc => {
+      const m       = mult(p, inc);
+      const final   = fi(p, inc);
+      const showMult = Math.abs(m - 1) > 0.001;
+      return `<div class="income-card">
+        <div class="income-card-row1">
+          <span class="income-name">${inc.name || '—'}</span>
+          <span class="income-final">$${_fmtN(final)} / міс</span>
+        </div>
+        <div class="income-card-row2">Пасивний</div>
+        <div class="income-card-row3">Базова: $${inc.basePay || inc.pay || 0}${showMult ? ` · ×${m.toFixed(2)} (бізнес)` : ''}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const totalActive  = active.reduce((s, i)  => s + fi(p, i), 0);
+  const totalPassive = passive.reduce((s, i) => s + fi(p, i), 0);
+  const totalAll     = totalInc(p);
+  document.getElementById('t2-totals').innerHTML = `
+    <div class="totals-row"><span>Усього активних:</span><span class="mono">$${_fmtN(totalActive)} / міс</span></div>
+    <div class="totals-row"><span>Усього пасивних:</span><span class="mono">$${_fmtN(totalPassive)} / міс</span></div>
+    <div class="totals-row"><span>Загальний дохід:</span><span class="mono">$${_fmtN(totalAll)} / міс</span></div>`;
+}
+
+function _renderTab3(p) {
+  const ex    = p.exp   || {};
+  const loans = p.loans || {};
+  const bank  = parseFloat(loans.bankRem)  || 0;
+  const micro = parseFloat(loans.microRem) || 0;
+
+  const housing   = parseFloat(ex.housingBase || ex.housing) || 0;
+  const food      = parseFloat(ex.food)      || 0;
+  const comm      = parseFloat(ex.comm)      || 0;
+  const transport = parseFloat(ex.transport) || 0;
+  const wife      = ex.hasWife ? (parseFloat(ex.wifeAmt) || 0) : 0;
+  const kids      = parseInt(ex.kids) || 0;
+  const kidCost   = parseFloat(ex.kidCost) || 0;
+  const kidsAmt   = kids * kidCost;
+  const familyTotal = housing + food + comm + transport + wife + kidsAmt;
+
+  const rows = [
+    housing   > 0 ? { l: 'Житло',               v: housing   } : null,
+    food      > 0 ? { l: 'Їжа',                  v: food      } : null,
+    comm      > 0 ? { l: 'Зв\'язок',             v: comm      } : null,
+    transport > 0 ? { l: 'Транспорт',            v: transport } : null,
+    wife      > 0 ? { l: 'Партнер',              v: wife      } : null,
+    kidsAmt   > 0 ? { l: `Діти (${kids} × $${kidCost})`, v: kidsAmt } : null,
+  ].filter(Boolean);
+
+  document.getElementById('t3-family-list').innerHTML =
+    rows.map(r => `<div class="exp-row"><span>${r.l}</span><span class="mono">$${_fmtN(r.v)}</span></div>`).join('') +
+    `<div class="exp-divider"></div>
+     <div class="exp-row exp-row-total"><span>Витрати сім'ї</span><span class="mono red">$${_fmtN(familyTotal)}</span></div>`;
+
+  const loanBlock = (icon, label, limit, rem, rate) => {
+    const payment = Math.round(rem * rate / 100);
+    const avail   = limit - rem;
+    return `<div class="loan-block">
+      <div class="loan-header">${icon} ${label} <span class="loan-limit">Ліміт: $${limit.toLocaleString()}</span></div>
+      <div class="loan-row"><span>Залишок боргу</span><span class="mono ${rem > 0 ? 'red' : ''}">$${_fmtN(rem)}</span></div>
+      <div class="loan-row"><span>Доступний ліміт</span><span class="mono">$${_fmtN(avail)}</span></div>
+      <div class="loan-row"><span>Виплата / раунд (${rate}%)</span><span class="mono ${payment > 0 ? 'red' : ''}">$${_fmtN(payment)}</span></div>
+    </div>`;
+  };
+
+  document.getElementById('t3-loans-list').innerHTML =
+    loanBlock('🏦', 'Банк',        3000,  bank,  3) +
+    loanBlock('💸', 'Мікрокредит', 30000, micro, 30);
+
+  const total = totalExp(p);
+  document.getElementById('t3-total-row').innerHTML =
+    `<span>Усього витрат (сім'я + кредити):</span><span class="mono red">$${_fmtN(total)} / міс</span>`;
+}
+
+function _renderTab4(p) {
+  const courses   = p.courses   || [];
+  const trainings = p.trainings || [];
+
+  // Courses
+  if (courses.length === 0) {
+    document.getElementById('t4-courses').innerHTML =
+      '<div style="color:var(--sub);font-size:14px">Курсів ще немає.</div>';
+  } else {
+    document.getElementById('t4-courses').innerHTML =
+      `<div class="skills-header"><span>Назва</span><span>Сфера</span><span>+Дохід</span></div>` +
+      courses.map(c => {
+        const sphere = [c.field, c.subField].filter(Boolean).join(' · ');
+        const pay    = parseFloat(c.pay) || 0;
+        return `<div class="skills-row">
+          <span>${c.name || '—'}</span>
+          <span style="color:var(--sub)">${sphere || '—'}</span>
+          <span class="${pay > 0 ? 'green' : 'pct-zero'}">${pay > 0 ? '+$' + pay : '—'}</span>
+        </div>`;
+      }).join('');
+  }
+
+  // Trainings
+  if (trainings.length === 0) {
+    document.getElementById('t4-trainings').innerHTML =
+      '<div style="color:var(--sub);font-size:14px">Тренінгів ще немає.</div>';
+    return;
+  }
+
+  const hasCons = trainings.some(t => (parseFloat(t.mEmpConsultant) || 0) > 0);
+  let sumEmp = 0, sumCons = 0, sumSelf = 0, sumBiz = 0;
+  trainings.forEach(t => {
+    sumEmp  += parseFloat(t.mEmpGeneral)    || 0;
+    sumCons += parseFloat(t.mEmpConsultant) || 0;
+    sumSelf += parseFloat(t.mSelf)          || 0;
+    sumBiz  += parseFloat(t.mBiz)           || 0;
+  });
+
+  const pctCell = (v) => v > 0
+    ? `<td class="pct-pos">+${v}%</td>`
+    : `<td class="pct-zero">—</td>`;
+
+  const rows = trainings.map(t => {
+    const emp  = parseFloat(t.mEmpGeneral)    || 0;
+    const cons = parseFloat(t.mEmpConsultant) || 0;
+    const self = parseFloat(t.mSelf)          || 0;
+    const biz  = parseFloat(t.mBiz)           || 0;
+    return `<tr>
+      <td>${t.name || '—'}</td>
+      ${pctCell(emp)}
+      ${hasCons ? pctCell(cons) : ''}
+      ${pctCell(self)}
+      ${pctCell(biz)}
+    </tr>`;
+  }).join('');
+
+  document.getElementById('t4-trainings').innerHTML = `
+    <div class="train-wrap">
+      <table class="train-table">
+        <thead><tr>
+          <th>Назва</th><th>Найм.</th>${hasCons ? '<th>Конс.</th>' : ''}<th>Себе</th><th>Біз.</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot class="train-total"><tr>
+          <td>Усього</td>
+          ${pctCell(sumEmp)}
+          ${hasCons ? pctCell(sumCons) : ''}
+          ${pctCell(sumSelf)}
+          ${pctCell(sumBiz)}
+        </tr></tfoot>
+      </table>
+    </div>`;
 }
 
 if ('serviceWorker' in navigator) {
