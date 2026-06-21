@@ -347,6 +347,53 @@
     .pct-pos { color: var(--green); }
     .pct-zero { color: var(--sub); }
 
+    /* ── Settlement Modal ── */
+    #settlement-modal {
+      position: fixed; inset: 0; background: rgba(8,9,15,0.97);
+      z-index: 300; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px 16px; overflow-y: auto;
+    }
+    #settlement-modal > * { width: 100%; max-width: 480px; }
+    @media (min-width: 480px) { #settlement-modal > * { max-width: 560px; } }
+    .settle-header { text-align: center; margin-bottom: 24px; }
+    .settle-emoji  { font-size: 52px; line-height: 1; margin-bottom: 10px; }
+    .settle-title  { font-size: 26px; font-weight: 800; }
+    .settle-round  { font-size: 13px; color: var(--sub); margin-top: 4px; }
+    .settle-card   { background: var(--surf); border: 1px solid var(--bord); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+    .settle-row    { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--bord); font-size: 14px; }
+    .settle-row:last-child { border-bottom: none; }
+    .settle-divider { border-top: 2px solid var(--bord); margin: 4px 0; }
+    .settle-total  { font-weight: 700; font-size: 15px; padding: 10px 0; }
+    .settle-mono   { font-family: var(--mono); font-weight: 700; }
+    .btn-settle {
+      width: 100%; padding: 18px; border: none; border-radius: 16px;
+      font-family: var(--body); font-size: 18px; font-weight: 800;
+      cursor: pointer; transition: transform 0.1s, opacity 0.1s;
+    }
+    .btn-settle:active { transform: scale(0.97); }
+
+    /* ── Debt Modal ── */
+    .modal-overlay-bottom {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+      z-index: 250; display: flex; align-items: flex-end;
+    }
+    .modal-sheet {
+      background: var(--surf); border: 1px solid var(--bord);
+      border-radius: 22px 22px 0 0; padding: 24px 20px;
+      padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+      width: 100%; max-height: 85vh; overflow-y: auto;
+    }
+    .modal-sheet-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+    .btn-debt {
+      width: 100%; background: linear-gradient(180deg, #2d4a8a 0%, #1e3570 100%);
+      border: none; border-radius: 14px; padding: 16px; color: #fff;
+      font-family: var(--body); font-size: 15px; font-weight: 700;
+      cursor: pointer; box-shadow: 0 6px 24px rgba(30,53,112,0.45);
+      transition: transform 0.1s; margin-bottom: 8px; display: block;
+    }
+    .btn-debt:active { transform: scale(0.98); }
+
     /* ── Card Type Modal ── */
     #card-type-modal {
       position: fixed; inset: 0; background: var(--bg); z-index: 200;
@@ -565,6 +612,80 @@
 
 </div><!-- /screen-game -->
 
+<!-- ══ SETTLEMENT MODAL ══ -->
+<div id="settlement-modal" class="hidden">
+  <div class="settle-header">
+    <div class="settle-emoji">🏁</div>
+    <div class="settle-title">Коло завершено!</div>
+    <div class="settle-round" id="settle-round">Коло 1 → 2</div>
+  </div>
+  <div class="settle-card">
+    <div class="settle-row">
+      <span>Дохід за коло:</span>
+      <span class="settle-mono green" id="settle-income">+$0</span>
+    </div>
+    <div class="settle-row">
+      <span>Витрати за коло:</span>
+      <span class="settle-mono red" id="settle-expense">-$0</span>
+    </div>
+    <div class="settle-divider"></div>
+    <div class="settle-row settle-total">
+      <span>Сальдо:</span>
+      <span class="settle-mono" id="settle-saldo">+$0</span>
+    </div>
+    <div class="settle-row">
+      <span>Поточна готівка:</span>
+      <span class="settle-mono" style="color:var(--gold)" id="settle-cash-before">$0</span>
+    </div>
+    <div class="settle-row">
+      <span>Готівка після:</span>
+      <span class="settle-mono" id="settle-cash-after">$0</span>
+    </div>
+  </div>
+  <button class="btn-settle" id="settle-confirm-btn" onclick="confirmSettlement()">
+    Отримати +$0
+  </button>
+</div>
+
+<!-- ══ DEBT MODAL ══ -->
+<div class="modal-overlay-bottom hidden" id="m-debt">
+  <div class="modal-sheet">
+    <div class="modal-sheet-title">💸 Бракує коштів</div>
+    <div style="background:var(--elev);border-radius:12px;padding:13px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px">
+        <span style="color:var(--sub)">Потрібно</span>
+        <span style="font-family:var(--mono);font-weight:700;color:var(--red)" id="debt-need-amount">$0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px" id="debt-cash-row">
+        <span style="color:var(--sub)">Твоя готівка</span>
+        <span style="font-family:var(--mono);color:var(--gold)" id="debt-cash-amount">$0</span>
+      </div>
+      <div style="height:1px;background:var(--bord);margin:6px 0"></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px">
+        <span style="color:var(--sub)">Займ</span>
+        <span style="font-family:var(--mono);font-weight:700" id="debt-loan-amount">$0</span>
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:12px;background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);border-radius:12px;padding:12px 14px;margin-bottom:14px;cursor:pointer" id="debt-cash-label">
+      <input type="checkbox" id="debt-use-cash" checked onchange="onDebtCashToggle(this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--gold)">
+      <div>
+        <div style="font-size:13px;font-weight:600">Списати готівку</div>
+        <div style="font-size:11px;color:var(--sub);margin-top:2px">Готівка піде в рахунок оплати, займ — на залишок</div>
+      </div>
+    </label>
+    <div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px">Де взяти займ:</div>
+    <button class="btn-debt" id="debt-bank-btn" onclick="confirmDebt('bank')">
+      🏦 Банк — <span id="debt-bank-info"></span>
+    </button>
+    <button class="btn-debt" id="debt-micro-btn" onclick="confirmDebt('micro')"
+            style="background:linear-gradient(180deg,#7c1d1d 0%,#5a1010 100%)">
+      💸 Мікрокредит — <span id="debt-micro-info"></span>
+    </button>
+    <div id="debt-no-credit" style="display:none;color:var(--red);font-size:14px;font-weight:600;text-align:center;padding:8px 0">❌ Кредитні ліміти вичерпано</div>
+    <button onclick="cancelDebt()" style="width:100%;padding:12px;background:transparent;border:none;color:rgba(255,255,255,0.25);font-family:var(--body);font-size:12px;cursor:pointer;margin-top:4px">Я передумав — скасувати</button>
+  </div>
+</div>
+
 <!-- ══ CARD TYPE MODAL ══ -->
 <div id="card-type-modal" class="hidden">
   <div style="text-align:center;margin-bottom:4px;font-size:13px;color:var(--sub)">Ти потрапив на</div>
@@ -587,6 +708,13 @@ let _decided      = false;
 let _cardModalOpen = false;
 let _currentCell  = null;
 let _lastPlayerData = null;
+
+// Settlement + Debt state
+let _settlementPending    = false;
+let _lastSettlementRollTs = null;
+let _settlementRound      = 1;
+let _debtContext          = 'settlement';
+let _fullTransactionAmount = 0;
 
 const CARD_CHOICES = {
   dela: [
@@ -712,7 +840,14 @@ function startListeners() {
         _currentCell = roll.cell;
       }
       setState('rolled');
-      if (_currentCell && (_currentCell.type === 'dela' || _currentCell.type === 'trening') && !_cardModalOpen) {
+
+      if (roll?.crossedFinish && roll.ts !== _lastSettlementRollTs) {
+        _lastSettlementRollTs = roll.ts;
+        _settlementPending = true;
+        showSettlementModal();
+      } else if (!_settlementPending && _currentCell &&
+                 (_currentCell.type === 'dela' || _currentCell.type === 'trening') &&
+                 !_cardModalOpen) {
         showCardTypeModal(_currentCell.type, _currentCell.label);
       }
 
@@ -1011,15 +1146,15 @@ function _renderTab2(p) {
 }
 
 function _renderTab3(p) {
-  const ex    = p.exp   || {};
+  const ex    = p.exp ? { ...DEFAULT_EXP, ...p.exp } : { ...DEFAULT_EXP };
   const loans = p.loans || {};
   const bank  = parseFloat(loans.bankRem)  || 0;
   const micro = parseFloat(loans.microRem) || 0;
 
-  const housing   = parseFloat(ex.housingBase || ex.housing) || 0;
-  const food      = parseFloat(ex.food)      || 0;
-  const comm      = parseFloat(ex.comm)      || 0;
-  const transport = parseFloat(ex.transport) || 0;
+  const housing   = parseFloat(ex.housingBase || ex.housing) || DEFAULT_EXP.housingBase;
+  const food      = parseFloat(ex.food)      || DEFAULT_EXP.food;
+  const comm      = parseFloat(ex.comm)      || DEFAULT_EXP.comm;
+  const transport = parseFloat(ex.transport) || DEFAULT_EXP.transport;
   const wife      = ex.hasWife ? (parseFloat(ex.wifeAmt) || 0) : 0;
   const kids      = parseInt(ex.kids) || 0;
   const kidCost   = parseFloat(ex.kidCost) || 0;
@@ -1132,6 +1267,211 @@ function _renderTab4(p) {
         </tr></tfoot>
       </table>
     </div>`;
+}
+
+// ── Settlement ────────────────────────────────────────────────
+function showSettlementModal() {
+  const p = _lastPlayerData || {};
+  const income  = Math.round(totalInc(p));
+  const expense = Math.round(totalExp(p));
+  const balance = Math.round(bal(p));
+  const cash    = Math.round(p.cash || 0);
+  const cashAfter = cash + balance;
+  const round   = p.round || 1;
+  _settlementRound = round;
+
+  document.getElementById('settle-round').textContent = `Коло ${round} → ${round + 1}`;
+  document.getElementById('settle-income').textContent  = '+$' + _fmtN(income);
+  document.getElementById('settle-expense').textContent = '-$' + _fmtN(expense);
+
+  const saldoEl = document.getElementById('settle-saldo');
+  saldoEl.textContent  = (balance >= 0 ? '+$' : '-$') + _fmtN(Math.abs(balance));
+  saldoEl.style.color  = balance >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('settle-cash-before').textContent = '$' + _fmtN(cash);
+
+  const afterEl = document.getElementById('settle-cash-after');
+  afterEl.textContent = (cashAfter >= 0 ? '$' : '-$') + _fmtN(Math.abs(cashAfter));
+  afterEl.style.color = cashAfter >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const btn = document.getElementById('settle-confirm-btn');
+  if (balance >= 0) {
+    btn.textContent = `Отримати +$${_fmtN(balance)}`;
+    btn.style.background = 'linear-gradient(180deg, #1f5c3a, #144028)';
+    btn.style.color      = '#4ade80';
+    btn.style.boxShadow  = '0 4px 20px rgba(34,197,94,0.3)';
+  } else if (cashAfter >= 0) {
+    btn.textContent = `Сплатити $${_fmtN(Math.abs(balance))}`;
+    btn.style.background = 'linear-gradient(180deg, #2d4a8a, #1e3570)';
+    btn.style.color      = '#fff';
+    btn.style.boxShadow  = '';
+  } else {
+    btn.textContent = `Сплатити та взяти позику`;
+    btn.style.background = 'linear-gradient(180deg, #7c1d1d, #5a1010)';
+    btn.style.color      = '#fff';
+    btn.style.boxShadow  = '';
+  }
+
+  document.getElementById('settlement-modal').classList.remove('hidden');
+}
+
+async function confirmSettlement() {
+  const p = _lastPlayerData || {};
+  const balance   = Math.round(bal(p));
+  const cash      = Math.round(p.cash || 0);
+  const cashAfter = cash + balance;
+
+  if (cashAfter >= 0) {
+    await window._fbUpdate(
+      window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+      { cash: cashAfter, round: _settlementRound + 1 }
+    );
+    document.getElementById('settlement-modal').classList.add('hidden');
+    _settlementPending = false;
+    _proceedAfterSettlement();
+  } else {
+    _debtContext = 'settlement';
+    _fullTransactionAmount = Math.abs(balance);
+    document.getElementById('settlement-modal').classList.add('hidden');
+    openDebtModal();
+  }
+}
+
+function _proceedAfterSettlement() {
+  if (_currentCell && (_currentCell.type === 'dela' || _currentCell.type === 'trening') && !_cardModalOpen) {
+    showCardTypeModal(_currentCell.type, _currentCell.label);
+  }
+}
+
+// ── Debt Modal ────────────────────────────────────────────────
+function openDebtModal() {
+  const p = _lastPlayerData || {};
+  const cash = Math.round(p.cash || 0);
+  const cb = document.getElementById('debt-use-cash');
+  if (cb) cb.checked = true;
+  const cashRow   = document.getElementById('debt-cash-row');
+  const cashLabel = document.getElementById('debt-cash-label');
+  if (cashRow)   cashRow.style.display   = cash > 0 ? 'flex' : 'none';
+  if (cashLabel) cashLabel.style.display = cash > 0 ? 'flex' : 'none';
+  updateDebtAmounts(true);
+  document.getElementById('m-debt').classList.remove('hidden');
+}
+
+function updateDebtAmounts(useCash) {
+  const p = _lastPlayerData || {};
+  const cash  = Math.round(p.cash || 0);
+  const total = _fullTransactionAmount || 0;
+  const loanNeeded = useCash ? Math.max(0, total - cash) : total;
+  const cashUsed   = useCash ? Math.min(cash, total)     : 0;
+  document.getElementById('debt-need-amount').textContent = '$' + _fmtN(total);
+  document.getElementById('debt-cash-amount').textContent = '$' + _fmtN(cashUsed);
+  document.getElementById('debt-loan-amount').textContent = '$' + _fmtN(loanNeeded);
+  _updateDebtButtons(loanNeeded);
+}
+
+function _updateDebtButtons(loanNeeded) {
+  const p = _lastPlayerData || {};
+  const loans      = p.loans || {};
+  const bankAvail  = Math.max(0, 3000  - (loans.bankRem  || 0));
+  const microAvail = Math.max(0, 30000 - (loans.microRem || 0));
+  const bankBtn  = document.getElementById('debt-bank-btn');
+  const microBtn = document.getElementById('debt-micro-btn');
+  const noCredit = document.getElementById('debt-no-credit');
+
+  if (bankAvail <= 0 && microAvail <= 0) {
+    if (bankBtn)  bankBtn.style.display  = 'none';
+    if (microBtn) microBtn.style.display = 'none';
+    if (noCredit) noCredit.style.display = 'block';
+    return;
+  }
+  if (noCredit) noCredit.style.display = 'none';
+
+  if (bankBtn) {
+    if (bankAvail <= 0) {
+      bankBtn.style.display = 'none';
+    } else {
+      bankBtn.style.display = 'block';
+      const microNeeded = loanNeeded - bankAvail;
+      if (microNeeded > 0 && microAvail >= microNeeded) {
+        bankBtn.innerHTML = `🏦 Банк $${_fmtN(bankAvail)} + МКО $${_fmtN(microNeeded)} <span id="debt-bank-info" style="display:none"></span>`;
+      } else {
+        bankBtn.innerHTML = `🏦 Банк — <span id="debt-bank-info">ліміт $${_fmtN(bankAvail)}</span>`;
+      }
+    }
+  }
+  if (microBtn) {
+    microBtn.style.display = microAvail > 0 ? 'block' : 'none';
+    const mi = document.getElementById('debt-micro-info');
+    if (mi) mi.textContent = `ліміт $${_fmtN(microAvail)}`;
+  }
+}
+
+function onDebtCashToggle(useCash) {
+  updateDebtAmounts(useCash);
+}
+
+async function confirmDebt(source) {
+  const p = _lastPlayerData || {};
+  const loans   = p.loans || {};
+  const useCash = document.getElementById('debt-use-cash')?.checked ?? true;
+  const cash    = Math.round(p.cash || 0);
+  const total   = _fullTransactionAmount || 0;
+  const loanNeeded = useCash ? Math.max(0, total - cash) : total;
+  const cashUsed   = useCash ? Math.min(cash, total)     : 0;
+
+  let newCash    = cash - cashUsed;
+  let newBankRem = loans.bankRem  || 0;
+  let newMicroRem = loans.microRem || 0;
+
+  if (source === 'bank') {
+    const bankAvail = Math.max(0, 3000 - newBankRem);
+    if (loanNeeded > bankAvail) {
+      const microNeeded = loanNeeded - bankAvail;
+      const microAvail  = Math.max(0, 30000 - newMicroRem);
+      if (microNeeded > microAvail) {
+        alert(`Не вистачає ліміту. Потрібно: $${_fmtN(loanNeeded)}, доступно: $${_fmtN(bankAvail + microAvail)}`);
+        return;
+      }
+      newBankRem  += bankAvail;
+      newMicroRem += microNeeded;
+    } else {
+      newBankRem += loanNeeded;
+    }
+  } else {
+    const microAvail = Math.max(0, 30000 - newMicroRem);
+    if (loanNeeded > microAvail) {
+      alert(`Перевищено ліміт МКО. Доступно: $${_fmtN(microAvail)}`);
+      return;
+    }
+    newMicroRem += loanNeeded;
+  }
+
+  _fullTransactionAmount = 0;
+  document.getElementById('m-debt').classList.add('hidden');
+
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { cash: newCash, loans: { bankRem: newBankRem, microRem: newMicroRem } }
+  );
+
+  await afterDebtResolved();
+}
+
+function cancelDebt() {
+  _fullTransactionAmount = 0;
+  _debtContext = 'settlement';
+  document.getElementById('m-debt').classList.add('hidden');
+}
+
+async function afterDebtResolved() {
+  if (_debtContext === 'settlement') {
+    await window._fbUpdate(
+      window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+      { round: _settlementRound + 1 }
+    );
+    _settlementPending = false;
+    _proceedAfterSettlement();
+  }
 }
 
 if ('serviceWorker' in navigator) {

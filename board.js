@@ -116,6 +116,8 @@ window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
     playerName,
     position: 0,
     laps: 0,
+    hasMovedOnce: false,
+    round: 1,
     online: true,
     cash: 500,
     incomes: [],
@@ -139,30 +141,30 @@ window._fbGrantTurn = async (db, sessionId, playerKey) => {
 };
 
 window._fbRollDice = async (db, sessionId, playerKey) => {
-  const set = window._fbSet, ref = window._fbRef, get = window._fbGet;
+  const ref = window._fbRef, get = window._fbGet;
 
   const turnSnap = await get(ref(db, `sessions/${sessionId}/currentTurn`));
   if (turnSnap.val() !== playerKey) return null;
 
-  const dice    = Math.floor(Math.random() * 6) + 1;
-  const posSnap = await get(ref(db, `sessions/${sessionId}/players/${playerKey}/position`));
-  const oldPos  = posSnap.val() || 0;
-  const newPos  = (oldPos + dice) % 24;
-  const cell    = BOARD_CELLS[newPos];
+  const dice        = Math.floor(Math.random() * 6) + 1;
+  const playerSnap  = await get(ref(db, `sessions/${sessionId}/players/${playerKey}`));
+  const player      = playerSnap.val() || {};
+  const oldPos      = player.position || 0;
+  const newPos      = (oldPos + dice) % 24;
+  const cell        = BOARD_CELLS[newPos];
+  const crossedFinish = (player.hasMovedOnce === true) && (newPos <= oldPos);
 
-  await set(ref(db, `sessions/${sessionId}/players/${playerKey}/position`), newPos);
-
-  if (newPos <= oldPos && dice > 0) {
-    const rSnap = await get(ref(db, `sessions/${sessionId}/round`));
-    await set(ref(db, `sessions/${sessionId}/round`), (rSnap.val() || 1) + 1);
-  }
+  await window._fbUpdate(ref(db, `sessions/${sessionId}/players/${playerKey}`), {
+    position:     newPos,
+    hasMovedOnce: true,
+  });
 
   await window._fbUpdate(ref(db, `sessions/${sessionId}`), {
     turnPhase: 'choosing',
-    lastRoll:  { playerKey, dice, position: newPos, cell, ts: Date.now() },
+    lastRoll:  { playerKey, dice, position: newPos, cell, crossedFinish, ts: Date.now() },
   });
 
-  return { dice, newPos, cell };
+  return { dice, newPos, cell, crossedFinish };
 };
 
 window._fbListenSession = (db, sessionId, callback) => {

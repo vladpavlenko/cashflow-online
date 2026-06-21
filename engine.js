@@ -46,20 +46,23 @@ function totalPassiveInc(state) {
   return (state.incomes || []).filter(i => i.type === 'passive').reduce((s, i) => s + fi(state, i), 0);
 }
 
+const DEFAULT_EXP = { housingBase: 200, food: 120, comm: 10, transport: 30, kids: 0, hasWife: false, kidCost: 0 };
+
 function hExp(state) {
-  return parseFloat(state.exp.housingBase) || 0;
+  const ex = state.exp || DEFAULT_EXP;
+  return parseFloat(ex.housingBase) || DEFAULT_EXP.housingBase;
 }
 
 function totalExp(state) {
-  const ex = state.exp;
-  const loans = state.loans;
-  return hExp(state)
-    + (parseFloat(ex.food) || 0)
-    + (parseFloat(ex.comm) || 0)
-    + (parseFloat(ex.transport) || 0)
+  const ex    = state.exp ? { ...DEFAULT_EXP, ...state.exp } : DEFAULT_EXP;
+  const loans = state.loans || {};
+  return (parseFloat(ex.housingBase) || DEFAULT_EXP.housingBase)
+    + (parseFloat(ex.food)      || DEFAULT_EXP.food)
+    + (parseFloat(ex.comm)      || DEFAULT_EXP.comm)
+    + (parseFloat(ex.transport) || DEFAULT_EXP.transport)
     + (ex.hasWife ? (parseFloat(ex.wifeAmt) || 0) : 0)
-    + ex.kids * (parseFloat(ex.kidCost) || 0)
-    + Math.round((parseFloat(loans.bankRem) || 0) * 0.03)
+    + (ex.kids || 0) * (parseFloat(ex.kidCost) || 0)
+    + Math.round((parseFloat(loans.bankRem)  || 0) * 0.03)
     + Math.round((parseFloat(loans.microRem) || 0) * 0.30);
 }
 

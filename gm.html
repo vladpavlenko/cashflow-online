@@ -1223,7 +1223,13 @@ function updateTurnPhaseUI(phase, session, players) {
     const r = session.lastRoll;
     ctPlayer.textContent = `🎲 ${name} кинув ${r?.dice} → ${r?.cell?.label || '?'} (кл.${r?.position})`;
     ctPlayer.style.color = 'var(--text)';
-    ctCard.textContent = '🎴 Обирає тип картки...';
+    if (r?.crossedFinish) {
+      ctCard.textContent = `🏁 ${name} перетнув ПОЛУЧКА — розраховується`;
+      ctCard.style.color = 'var(--gold)';
+    } else {
+      ctCard.textContent = '🎴 Обирає тип картки...';
+      ctCard.style.color = '';
+    }
     ctCard.classList.remove('hidden');
     cancelBtn.textContent = '🚫 Скасувати хід';
     cancelBtn.onclick = cancelTurn;
@@ -1298,7 +1304,7 @@ function renderTurnControls(players, phase) {
       : `<button onclick="grantTurn('${key}')" ${btnDisabled ? `disabled title="${p.online === false ? 'Офлайн' : 'Хід вже йде'}"` : ''}>▶ Хід</button>`;
     return `
       <div class="player-turn-row">
-        <span>${p.playerName || key} · $${p.cash || 0} · кл.${p.position || 0}</span>
+        <span>${p.playerName || key} · $${p.cash || 0} · кл.${p.position || 0} · кол.${p.round || 1}</span>
         ${badge}
       </div>`;
   }).join('');
