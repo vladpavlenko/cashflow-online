@@ -42,30 +42,30 @@ function getCellAt(pos) {
 // measured from its actual pixel layout — cell 0 ("Получка") at 12 o'clock,
 // going clockwise in 15° steps around the label ring.
 const CELL_COORDS = [
-  { x:50.7, y:9.0  },  // 0  ПОЛУЧКА
-  { x:61.3, y:10.6 },  // 1  ТРЕНИНГ
-  { x:71.1, y:14.9 },  // 2  РАСХОДЫ
-  { x:79.5, y:21.5 },  // 3  ДЕЛА
-  { x:85.9, y:30.1 },  // 4  ЛЮБОВЬ
-  { x:89.8, y:40.1 },  // 5  ДЕЛА
-  { x:91.0, y:50.7 },  // 6  ТРЕНИНГ
-  { x:89.4, y:61.3 },  // 7  ДЕЛА
-  { x:85.1, y:71.1 },  // 8  РАСХОДЫ
-  { x:78.5, y:79.5 },  // 9  ДЕЛА
-  { x:69.9, y:85.9 },  // 10 ТРЕНИНГ
-  { x:59.9, y:89.8 },  // 11 ДЕЛА
-  { x:49.3, y:91.0 },  // 12 УВОЛЕН
-  { x:38.7, y:89.4 },  // 13 ДЕЛА
-  { x:28.9, y:85.1 },  // 14 РАСХОДЫ
-  { x:20.5, y:78.5 },  // 15 ДЕЛА
-  { x:14.1, y:69.9 },  // 16 ТРЕНИНГ
-  { x:10.2, y:59.9 },  // 17 РАСХОДЫ
-  { x:9.0,  y:49.3 },  // 18 ДЕЛА
-  { x:10.6, y:38.7 },  // 19 ДЕЛА
-  { x:14.9, y:28.9 },  // 20 РЕБЕНОК
-  { x:21.5, y:20.5 },  // 21 ДЕЛА
-  { x:30.1, y:14.1 },  // 22 ТРЕНИНГ
-  { x:40.1, y:10.2 },  // 23 ДЕЛА
+  { x:50.3, y:23.0 },  // 0  ПОЛУЧКА
+  { x:55.5, y:23.8 },  // 1  ТРЕНИНГ
+  { x:60.3, y:25.9 },  // 2  РАСХОДЫ
+  { x:64.4, y:29.1 },  // 3  ДЕЛА
+  { x:67.5, y:33.3 },  // 4  ЛЮБОВЬ
+  { x:69.4, y:38.2 },  // 5  ДЕЛА
+  { x:70.0, y:43.3 },  // 6  ТРЕНИНГ
+  { x:69.2, y:48.5 },  // 7  ДЕЛА
+  { x:67.1, y:53.3 },  // 8  РАСХОДЫ
+  { x:63.9, y:57.4 },  // 9  ДЕЛА
+  { x:59.7, y:60.5 },  // 10 ТРЕНИНГ
+  { x:54.8, y:62.4 },  // 11 ДЕЛА
+  { x:49.7, y:63.0 },  // 12 УВОЛЕН
+  { x:44.5, y:62.2 },  // 13 ДЕЛА
+  { x:39.7, y:60.1 },  // 14 РАСХОДЫ
+  { x:35.6, y:56.9 },  // 15 ДЕЛА
+  { x:32.5, y:52.7 },  // 16 ТРЕНИНГ
+  { x:30.6, y:47.8 },  // 17 РАСХОДЫ
+  { x:30.0, y:42.7 },  // 18 ДЕЛА
+  { x:30.8, y:37.5 },  // 19 ДЕЛА
+  { x:32.9, y:32.7 },  // 20 РЕБЕНОК
+  { x:36.1, y:28.6 },  // 21 ДЕЛА
+  { x:40.3, y:25.5 },  // 22 ТРЕНИНГ
+  { x:45.2, y:23.6 },  // 23 ДЕЛА
 ];
 
 function getCellCenter(cellId) {
@@ -106,16 +106,16 @@ function updateBoardTokens(players) {
       tokenG.id = `token-${key}`;
 
       const circ = document.createElementNS(NS, 'circle');
-      circ.setAttribute('r', '3.5');
+      circ.setAttribute('r', '3.2');
       circ.setAttribute('fill', _TOKEN_COLORS[idx % _TOKEN_COLORS.length]);
       circ.setAttribute('stroke', 'white');
-      circ.setAttribute('stroke-width', '0.8');
+      circ.setAttribute('stroke-width', '0.6');
 
       const txt = document.createElementNS(NS, 'text');
       txt.setAttribute('text-anchor', 'middle');
-      txt.setAttribute('y', '1.2');
+      txt.setAttribute('y', '1.1');
       txt.setAttribute('fill', 'white');
-      txt.setAttribute('font-size', '2.5');
+      txt.setAttribute('font-size', '2.4');
       txt.setAttribute('font-weight', '700');
       txt.setAttribute('font-family', 'DM Sans, sans-serif');
       txt.textContent = (p.playerName || key).charAt(0).toUpperCase();
