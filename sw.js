@@ -1,10 +1,9 @@
 // CashFlow Online — Service Worker
-const CACHE = 'cashflow-online-v2';
+const CACHE = 'cashflow-online-v3';
 
 const ASSETS = [
   './',
   './index.html',
-  './manifest.json',
   './icon-192.png',
   './icon-512.png',
   './engine.js',
