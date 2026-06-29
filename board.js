@@ -42,7 +42,7 @@ function getCellAt(pos) {
 //
 // Три набори залежно від стану гри:
 //
-//  CELL_COORDS          — 24 кл., outer ring of board_real.png
+//  CELL_COORDS          — 24 кл., outer ring of cashflow-board-lap1.png
 //                         використовується коли ВСІ гравці на колі 1
 //                         (SVG viewBox 0 0 100 100, border-radius:50%)
 //
@@ -126,12 +126,14 @@ function updateBoardTokens(players) {
   // Switch board image, shape and viewBox based on active ring
   const img1 = document.getElementById('board-img-lap1');
   const img2 = document.getElementById('board-img-lap2');
+  const wrap = document.getElementById('board-wrap');
   if (img1 && img2) {
     img1.style.opacity = anyOnLap2 ? '0' : '1';
     img1.style.borderRadius = '50%';
     img2.style.opacity = anyOnLap2 ? '1' : '0';
     img2.style.borderRadius = '8px';
   }
+  if (wrap) wrap.style.aspectRatio = anyOnLap2 ? '507 / 587' : '1 / 1';
   svg.setAttribute('viewBox', anyOnLap2 ? '0 0 100 116' : '0 0 100 100');
 
   const r        = anyOnLap2 ? '1.8' : '3.2';
