@@ -38,9 +38,22 @@ function getCellAt(pos) {
   return BOARD_CELLS[pos % BOARD_CELLS.length];
 }
 
-// Token positions as percentages over the board image (assets/board_real.png),
-// measured from its actual pixel layout — cell 0 ("Получка") at 12 o'clock,
-// going clockwise in 15° steps around the label ring.
+// ── Координати фішок ─────────────────────────────────────────────────────────
+//
+// Три набори залежно від стану гри:
+//
+//  CELL_COORDS          — 24 кл., outer ring of board_real.png
+//                         використовується коли ВСІ гравці на колі 1
+//                         (SVG viewBox 0 0 100 100, border-radius:50%)
+//
+//  CELL_COORDS_RING1_DUAL — 24 кл., inner ring of cashflow-board-lap2.png
+//                         використовується для гравців на КОЛІ 1
+//                         коли хтось вже перейшов на коло 2
+//
+//  CELL_COORDS_LAP2     — 70 кл. (ЗАГЛУШКИ, будуть відкалібровані пізніше)
+//                         for players on КOLO 2
+//                         (SVG viewBox 0 0 100 116, border-radius:8px)
+
 const CELL_COORDS = [
   { x:50.7, y:9.0  },  // 0  ПОЛУЧКА
   { x:61.3, y:10.6 },  // 1  ТРЕНИНГ
@@ -68,7 +81,31 @@ const CELL_COORDS = [
   { x:40.1, y:10.2 },  // 23 ДЕЛА
 ];
 
-function getCellCenter(cellId) {
+// Inner ring of cashflow-board-lap2.png — for ring1 players in dual-board mode
+const CELL_COORDS_RING1_DUAL = [
+  { x:50.3, y:23.0 },  { x:55.5, y:23.8 },  { x:60.3, y:25.9 },
+  { x:64.4, y:29.1 },  { x:67.5, y:33.3 },  { x:69.4, y:38.2 },
+  { x:70.0, y:43.3 },  { x:69.2, y:48.5 },  { x:67.1, y:53.3 },
+  { x:63.9, y:57.4 },  { x:59.7, y:60.5 },  { x:54.8, y:62.4 },
+  { x:49.7, y:63.0 },  { x:44.5, y:62.2 },  { x:39.7, y:60.1 },
+  { x:35.6, y:56.9 },  { x:32.5, y:52.7 },  { x:30.6, y:47.8 },
+  { x:30.0, y:42.7 },  { x:30.8, y:37.5 },  { x:32.9, y:32.7 },
+  { x:36.1, y:28.6 },  { x:40.3, y:25.5 },  { x:45.2, y:23.6 },
+];
+
+// Outer ring of cashflow-board-lap2.png — 70 cells, coords TBD (stubs at center)
+const CELL_COORDS_LAP2 = Array.from({ length: 70 }, (_, i) => ({ x: 50, y: 58 }));
+
+// dualMode = true when any player has lap === 2
+function getCellCenter(cellId, lap, dualMode) {
+  if (dualMode && lap === 2) {
+    const c = CELL_COORDS_LAP2[cellId % CELL_COORDS_LAP2.length];
+    return { xPct: c.x, yPct: c.y };
+  }
+  if (dualMode && lap !== 2) {
+    const c = CELL_COORDS_RING1_DUAL[cellId % 24];
+    return { xPct: c.x, yPct: c.y };
+  }
   const c = CELL_COORDS[cellId % 24];
   return { xPct: c.x, yPct: c.y };
 }
@@ -84,6 +121,22 @@ function updateBoardTokens(players) {
   if (!group) return;
 
   const keys = Object.keys(players || {});
+  const anyOnLap2 = keys.some(k => (players[k].lap || 1) === 2);
+
+  // Switch board image, shape and viewBox based on active ring
+  const img1 = document.getElementById('board-img-lap1');
+  const img2 = document.getElementById('board-img-lap2');
+  if (img1 && img2) {
+    img1.style.opacity = anyOnLap2 ? '0' : '1';
+    img1.style.borderRadius = '50%';
+    img2.style.opacity = anyOnLap2 ? '1' : '0';
+    img2.style.borderRadius = '8px';
+  }
+  svg.setAttribute('viewBox', anyOnLap2 ? '0 0 100 116' : '0 0 100 100');
+
+  const r        = anyOnLap2 ? '1.8' : '3.2';
+  const fontSize = anyOnLap2 ? '1.4' : '2.4';
+  const strokeW  = anyOnLap2 ? '0.4' : '0.6';
 
   // Remove stale tokens
   Array.from(group.children).forEach(el => {
@@ -92,12 +145,15 @@ function updateBoardTokens(players) {
   });
 
   keys.forEach((key, idx) => {
-    const p = players[key];
-    const pos = getCellCenter(p.position || 0);
+    const p   = players[key];
+    const lap = p.lap || 1;
+    const pos = getCellCenter(p.position || 0, lap, anyOnLap2);
 
-    // Offset tokens sharing a cell
-    const sameCellCount = keys.slice(0, idx).filter(k => players[k].position === p.position).length;
-    const ox = sameCellCount * 4;
+    // Offset tokens sharing the same cell on the same lap
+    const sameCellCount = keys.slice(0, idx).filter(k =>
+      players[k].position === p.position && (players[k].lap || 1) === lap
+    ).length;
+    const ox = sameCellCount * (anyOnLap2 ? 2.5 : 4);
 
     let tokenG = group.querySelector(`#token-${CSS.escape(key)}`);
     if (!tokenG) {
@@ -106,16 +162,12 @@ function updateBoardTokens(players) {
       tokenG.id = `token-${key}`;
 
       const circ = document.createElementNS(NS, 'circle');
-      circ.setAttribute('r', '3.2');
       circ.setAttribute('fill', _TOKEN_COLORS[idx % _TOKEN_COLORS.length]);
       circ.setAttribute('stroke', 'white');
-      circ.setAttribute('stroke-width', '0.6');
 
       const txt = document.createElementNS(NS, 'text');
       txt.setAttribute('text-anchor', 'middle');
-      txt.setAttribute('y', '1.1');
       txt.setAttribute('fill', 'white');
-      txt.setAttribute('font-size', '2.4');
       txt.setAttribute('font-weight', '700');
       txt.setAttribute('font-family', 'DM Sans, sans-serif');
       txt.textContent = (p.playerName || key).charAt(0).toUpperCase();
@@ -124,12 +176,19 @@ function updateBoardTokens(players) {
       tokenG.appendChild(txt);
       group.appendChild(tokenG);
     } else {
-      // Update initial colour if idx changed
       const circ = tokenG.querySelector('circle');
       if (circ) circ.setAttribute('fill', _TOKEN_COLORS[idx % _TOKEN_COLORS.length]);
       const txt = tokenG.querySelector('text');
       if (txt) txt.textContent = (p.playerName || key).charAt(0).toUpperCase();
     }
+
+    // Update size attrs every render (they change when board switches)
+    const circ = tokenG.querySelector('circle');
+    circ.setAttribute('r', r);
+    circ.setAttribute('stroke-width', strokeW);
+    const txt = tokenG.querySelector('text');
+    txt.setAttribute('font-size', fontSize);
+    txt.setAttribute('y', (parseFloat(r) * 0.34).toFixed(2));
 
     tokenG.setAttribute('transform', `translate(${(pos.xPct + ox).toFixed(2)}, ${pos.yPct.toFixed(2)})`);
   });
@@ -141,6 +200,7 @@ window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
   await window._fbSet(window._fbRef(db, `sessions/${sessionId}/players/${playerKey}`), {
     playerName,
     position: 0,
+    lap: 1,
     laps: 0,
     hasMovedOnce: false,
     round: 1,

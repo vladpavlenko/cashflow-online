@@ -609,8 +609,11 @@
 
   <!-- ── BOARD ── -->
   <div id="board-container" class="hidden">
-    <div id="board-wrap" style="position:relative; display:inline-block; width:100%; max-width:600px">
-      <img src="assets/board_real.png" style="width:100%; display:block; border-radius:50%" alt="Ігрове поле">
+    <div id="board-wrap" style="position:relative; display:inline-block; width:100%; max-width:600px; padding-bottom:100%">
+      <img id="board-img-lap1" src="assets/board_real.png" alt="Ігрове поле"
+           style="position:absolute;top:0;left:0;width:100%;height:100%;display:block;object-fit:contain;border-radius:50%;opacity:1;transition:opacity .4s">
+      <img id="board-img-lap2" src="assets/cashflow-board-lap2.png" alt="Ігрове поле — 2 коло"
+           style="position:absolute;top:0;left:0;width:100%;height:100%;display:block;object-fit:contain;border-radius:8px;opacity:0;transition:opacity .4s">
       <svg id="board-svg" style="position:absolute;top:0;left:0;width:100%;height:100%" viewBox="0 0 100 100">
         <g id="board-tokens"></g>
       </svg>
