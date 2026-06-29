@@ -2,7 +2,7 @@
   "name": "CashFlow Online",
   "short_name": "CashFlow v2",
   "description": "CashFlow Online — ігрове поле, автоматичне тягнення карток",
-  "start_url": "/",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#08090f",
   "theme_color": "#08090f",
