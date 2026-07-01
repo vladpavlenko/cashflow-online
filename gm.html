@@ -1194,8 +1194,7 @@ function onSessionUpdate(session) {
   }
 
   // Shared-card stage management (GM is authoritative for transitions)
-  const sc      = session.sharedCard;
-  const players = session.players || {};
+  const sc          = session.sharedCard;
   const playerCount = Object.keys(players).length;
   if (sc && playerCount > 0) {
     const decidedCount = Object.keys(sc.decisions || {}).length;
