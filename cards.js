@@ -103,3 +103,48 @@ function drawCard(type) {
   if (!deck || deck.length === 0) return null;
   return { ...deck[Math.floor(Math.random() * deck.length)] };
 }
+
+// Renders a physical-card-style HTML block.
+// opts.hideEffect = true  → show "effect unknown" placeholder (training front side)
+window.renderPhysicalCardHTML = function(card, cardType, opts) {
+  opts = opts || {};
+  const TYPE_LABELS = {
+    emp: '💼 Робота на дядю', self: '🧑‍💻 Робота на себе',
+    random: '💰 Випадковий заробіток', deal: '🤝 Купи-Продай',
+    startup: '🚀 Стартап / Кейс', course: '📖 Курс',
+    training: '🧠 Тренінг', expense: '💸 Витрати',
+    uvolen: '🔥 Звільнено', lyubov: '💍 Любов',
+    rebenok: '👶 Дитина', poluchka: '🏁 День зарплати',
+  };
+  const label = TYPE_LABELS[cardType] || cardType;
+  const r = (k, v) =>
+    `<div class="pcard-row"><span class="pcard-key">${k}</span><span class="pcard-val">${v}</span></div>`;
+
+  let rows = '';
+  if (card.pay    !== undefined) rows += r('Дохід:', `$${card.pay}/міс`);
+  if (card.amount !== undefined) rows += r('Виплата:', `+$${card.amount}`);
+  if (card.cost   !== undefined) rows += r('Вартість:', `$${card.cost}`);
+  if (card.invest !== undefined) rows += r('Вкладення:', `$${card.invest}`);
+  if (card.pct && card.invest)   rows += r('Пасив. дохід:', `$${Math.round(card.invest * card.pct)}/міс`);
+  if (card.mult && card.invest)  rows += r('Прибуток:', `+$${Math.round(card.invest * card.mult)}`);
+  if (card.term   !== undefined) rows += r('Термін:', `${card.term} міс.`);
+  if (card.field  !== undefined) rows += r('Сфера:', card.field);
+
+  const reqs = card.req || [];
+  const reqHtml = reqs.length
+    ? `<div class="pcard-req">⚠ Вимоги: ${reqs.join(', ')}</div>` : '';
+
+  let effectHtml = '';
+  if (opts.hideEffect) {
+    effectHtml = `<div class="pcard-hidden">🔒 Ефект невідомий...<br><small>Дізнаєшся після голосування</small></div>`;
+  } else if (card.effect) {
+    effectHtml = `<div class="pcard-effect">✨ ${card.effect}</div>`;
+  }
+
+  const body = rows + reqHtml + effectHtml;
+  return `<div class="pcard">
+    <div class="pcard-header">${label}</div>
+    <div class="pcard-name">${card.name || '—'}</div>
+    ${body ? `<div class="pcard-body">${body}</div>` : ''}
+  </div>`;
+};

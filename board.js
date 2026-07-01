@@ -208,6 +208,8 @@ window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
     round: 1,
     online: true,
     cash: 500,
+    hasPartner: false,
+    kidsCount: 0,
     incomes: [],
     courses: [],
     trainings: [],
@@ -271,5 +273,36 @@ window._fbSetCard = async (db, sessionId, playerKey, cardType, card) => {
     turnPhase:       'deciding',
     currentCard:     { playerKey, cardType, card, drawnAt: Date.now() },
     cardTypeRequest: null,
+  });
+};
+
+// ── Shared-card helpers (Training / Course cell) ──────────────────────────
+
+window._fbSetSharedCard = async (db, sessionId, cardType, card) => {
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}`), {
+    sharedCard: { cardType, card, stage: 'front', decisions: {}, acks: {} },
+  });
+};
+
+window._fbSharedCardDecision = async (db, sessionId, playerKey, decision) => {
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}/sharedCard/decisions`), {
+    [playerKey]: decision,
+  });
+};
+
+window._fbSharedCardAck = async (db, sessionId, playerKey) => {
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}/sharedCard/acks`), {
+    [playerKey]: true,
+  });
+};
+
+window._fbSetSharedCardStage = async (db, sessionId, stage) => {
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}/sharedCard`), { stage });
+};
+
+window._fbClearSharedCard = async (db, sessionId) => {
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}`), {
+    sharedCard: null,
+    turnPhase:  'done',
   });
 };

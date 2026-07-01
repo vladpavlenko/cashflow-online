@@ -429,6 +429,43 @@
       cursor: pointer; text-align: center; padding: 12px;
       text-decoration: underline; font-family: var(--body); display: block; margin: 0 auto;
     }
+
+    /* ── Physical Card ── */
+    .pcard { background:#f8f4ec; border:2px solid #3a2c1a; border-radius:12px; overflow:hidden; color:#1a1008; margin-bottom:16px; box-shadow:0 2px 12px rgba(0,0,0,0.25); }
+    .pcard-header { background:#e8dfc8; border-bottom:1.5px solid #c4b090; padding:8px 14px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:#6c4a20; }
+    .pcard-name { padding:12px 14px 8px; font-size:20px; font-weight:800; color:#1a1008; line-height:1.2; border-bottom:1px solid #d8ccb8; }
+    .pcard-body { padding:10px 14px; }
+    .pcard-row { display:flex; justify-content:space-between; align-items:baseline; padding:3px 0; border-bottom:1px solid rgba(60,40,10,0.07); font-size:13px; }
+    .pcard-row:last-child { border-bottom:none; }
+    .pcard-key { color:#7c6040; }
+    .pcard-val { font-weight:700; color:#1a1008; font-family:var(--mono); }
+    .pcard-req { margin-top:8px; padding:5px 8px; background:rgba(180,40,0,0.08); border-radius:6px; color:#8b2000; font-size:12px; }
+    .pcard-effect { margin-top:8px; font-style:italic; color:#3a2c18; font-size:13px; line-height:1.5; }
+    .pcard-hidden { text-align:center; padding:12px 0; color:#9c8c70; font-style:italic; font-size:13px; }
+
+    /* ── Shared Card Modal ── */
+    #shared-card-modal {
+      position:fixed; inset:0; background:rgba(8,9,15,0.95); z-index:205;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      padding:24px 16px; overflow-y:auto;
+    }
+    #shared-card-content { width:100%; max-width:480px; }
+    @media (min-width:480px) { #shared-card-content { max-width:560px; } }
+    .shared-card-lbl { font-size:12px; color:var(--sub); text-align:center; margin-bottom:6px; }
+    .shared-vote-row { display:flex; gap:10px; margin-top:8px; }
+    #btn-shared-accept { flex:1; padding:14px; border-radius:13px; background:linear-gradient(180deg,#1f5c3a,#144028); border:none; color:#4ade80; font-family:var(--body); font-size:15px; font-weight:700; cursor:pointer; }
+    #btn-shared-decline { flex:1; padding:14px; border-radius:13px; background:rgba(239,68,68,0.08); border:1.5px solid rgba(239,68,68,0.28); color:var(--red); font-family:var(--body); font-size:15px; font-weight:600; cursor:pointer; }
+    .shared-waiting-msg { text-align:center; padding:12px 0; font-size:14px; font-weight:600; color:var(--sub); }
+    #btn-shared-ok { width:100%; padding:16px; border:1px solid var(--bord); border-radius:16px; background:var(--elev); color:var(--text); font-family:var(--body); font-size:16px; font-weight:700; cursor:pointer; margin-top:8px; }
+
+    /* ── Event Modal (Любовь / Уволен / Ребенок) ── */
+    #event-modal {
+      position: fixed; inset: 0; background: var(--bg); z-index: 210;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 32px 16px;
+    }
+    #event-modal-content { width: 100%; max-width: 480px; }
+    @media (min-width: 480px) { #event-modal-content { max-width: 560px; } }
   </style>
 </head>
 <body>
@@ -698,6 +735,34 @@
   </div>
 </div>
 
+<!-- ══ SHARED CARD MODAL (Тренінг / Курс) ══ -->
+<div id="shared-card-modal" class="hidden">
+  <div id="shared-card-content">
+    <div class="shared-card-lbl">📚 Картка для всіх гравців</div>
+    <div id="shared-card-render"></div>
+    <div id="shared-card-front-ui">
+      <div class="shared-waiting-msg hidden" id="shared-waiting-msg">⏳ Ти вже обрав. Чекаємо на інших гравців...</div>
+      <div class="shared-vote-row" id="shared-vote-row">
+        <button id="btn-shared-accept"  onclick="sharedCardVote('accept')">✅ Погодитися</button>
+        <button id="btn-shared-decline" onclick="sharedCardVote('decline')">❌ Відхилити</button>
+      </div>
+    </div>
+    <div id="shared-card-back-ui" class="hidden">
+      <button id="btn-shared-ok" onclick="sharedCardOk()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ EVENT MODAL (Любовь / Уволен / Ребенок) ══ -->
+<div id="event-modal" class="hidden">
+  <div id="event-modal-content">
+    <div id="event-modal-emoji" style="text-align:center;font-size:52px;line-height:1;margin-bottom:12px"></div>
+    <div id="event-modal-title" style="font-size:26px;font-weight:800;text-align:center;letter-spacing:2px;margin-bottom:16px;text-transform:uppercase"></div>
+    <div id="event-modal-msg" style="font-size:15px;text-align:center;color:var(--sub);line-height:1.6;margin-bottom:32px"></div>
+    <button class="btn-settle" onclick="eventModalOk()" style="background:var(--elev);color:var(--text);border:1px solid var(--bord)">OK</button>
+  </div>
+</div>
+
 <script>
 let _db           = null;
 let _sessionId    = null;
@@ -706,8 +771,13 @@ let _myName       = null;
 let _myTurn       = false;
 let _state        = 'lobby';
 let _decided      = false;
-let _cardModalOpen = false;
-let _currentCell  = null;
+let _cardModalOpen       = false;
+let _eventModalOpen      = false;
+let _eventModalOkFn      = null;
+let _sharedCardDecided   = false; // this player voted on current sharedCard
+let _sharedCardAcked     = false; // this player acked the back side
+let _sharedCardInitiated = false; // current-turn player already wrote sharedCard
+let _currentCell    = null;
 let _lastPlayerData = null;
 
 // Settlement + Debt state
@@ -728,6 +798,9 @@ const CARD_CHOICES = {
   trening: [
     { type: 'course',   label: 'Курс',    img: 'assets/cards/course.png',   icon: '📖', bg: '#1e3570' },
     { type: 'training', label: 'Тренінг', img: 'assets/cards/training.png', icon: '🧠', bg: '#1a4a3a' },
+  ],
+  lyubov: [
+    { type: 'lyubov', label: 'Любовь', img: null, icon: '💍', bg: '#7c1040' },
   ],
 };
 
@@ -809,21 +882,30 @@ function startListeners() {
 
     document.getElementById('hdr-round').textContent = `Р${session.round || 1}`;
 
+    // sharedCard is visible to ALL players, handle before any early return
+    handleSharedCardUpdate(session.sharedCard || null);
+
     const phase    = session.turnPhase || null;
     const isMyTurn = session.currentTurn === _myPlayerKey;
 
     if (phase === null) {
-      _decided       = false;
-      _cardModalOpen = false;
-      _currentCell   = null;
+      _decided             = false;
+      _cardModalOpen       = false;
+      _eventModalOpen      = false;
+      _sharedCardInitiated = false;
+      _currentCell         = null;
       document.getElementById('card-type-modal').classList.add('hidden');
+      document.getElementById('event-modal').classList.add('hidden');
       if (_state !== 'lobby') setState('waiting');
       return;
     }
 
     if (!isMyTurn) {
       document.getElementById('card-type-modal').classList.add('hidden');
-      _cardModalOpen = false;
+      document.getElementById('event-modal').classList.add('hidden');
+      _cardModalOpen       = false;
+      _eventModalOpen      = false;
+      _sharedCardInitiated = false;
       if (_state === 'my_turn' || _state === 'rolled') setState('waiting');
       return;
     }
@@ -846,10 +928,18 @@ function startListeners() {
         _lastSettlementRollTs = roll.ts;
         _settlementPending = true;
         showSettlementModal();
-      } else if (!_settlementPending && _currentCell &&
-                 (_currentCell.type === 'dela' || _currentCell.type === 'trening') &&
-                 !_cardModalOpen) {
-        showCardTypeModal(_currentCell.type, _currentCell.label);
+      } else if (!_settlementPending && _currentCell) {
+        const ctype = _currentCell.type;
+        if ((ctype === 'dela' || ctype === 'lyubov') && !_cardModalOpen && !_eventModalOpen) {
+          showCardTypeModal(ctype, _currentCell.label);
+        } else if ((ctype === 'uvolen' || ctype === 'rebenok') && !_eventModalOpen) {
+          _eventModalOpen = true;
+          if (ctype === 'uvolen') handleUvolenCell();
+          else handleRebenokCell();
+        } else if (ctype === 'trening' && !_sharedCardInitiated) {
+          _sharedCardInitiated = true;
+          initiateSharedCard();
+        }
       }
 
     } else if (phase === 'waiting_card') {
@@ -866,6 +956,8 @@ function startListeners() {
       }
 
     } else if (phase === 'done') {
+      document.getElementById('event-modal').classList.add('hidden');
+      _eventModalOpen = false;
       if (_state === 'card' && !_decided) {
         document.getElementById('card-actions').classList.add('hidden');
         document.getElementById('card-decided').classList.remove('hidden');
@@ -935,8 +1027,16 @@ async function rollDice() {
   document.getElementById('roll-cell-name').textContent = result.cell.label;
   setState('rolled');
 
-  if (result.cell.type === 'dela' || result.cell.type === 'trening') {
-    showCardTypeModal(result.cell.type, result.cell.label);
+  const ct = result.cell.type;
+  if (ct === 'dela' || ct === 'lyubov') {
+    showCardTypeModal(ct, result.cell.label);
+  } else if (ct === 'uvolen' || ct === 'rebenok') {
+    _eventModalOpen = true;
+    if (ct === 'uvolen') handleUvolenCell();
+    else handleRebenokCell();
+  } else if (ct === 'trening' && !_sharedCardInitiated) {
+    _sharedCardInitiated = true;
+    initiateSharedCard();
   }
 }
 
@@ -949,18 +1049,25 @@ function showCardTypeModal(cellType, cellLabel) {
   document.getElementById('modal-cell-label').textContent = cellLabel || cellType.toUpperCase();
 
   const grid = document.getElementById('card-type-grid');
-  grid.innerHTML = choices.map(c => `
+  grid.innerHTML = choices.map(c => {
+    const imgTag = c.img
+      ? `<img class="card-choice-img" src="${c.img}" alt="${c.label}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const phStyle = c.img ? '' : 'display:flex;';
+    return `
     <button class="card-choice-btn" onclick="playerChooseCardType('${c.type}')">
-      <img class="card-choice-img" src="${c.img}" alt="${c.label}"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-      <div class="card-choice-placeholder" style="background:${c.bg}">${c.icon}</div>
+      ${imgTag}
+      <div class="card-choice-placeholder" style="background:${c.bg};${phStyle}">${c.icon}</div>
       <div class="card-choice-label">${c.label}</div>
-    </button>`).join('');
+    </button>`;
+  }).join('');
 
   document.getElementById('card-type-modal').classList.remove('hidden');
 }
 
 async function playerChooseCardType(cardType) {
+  if (cardType === 'lyubov') { handleLyubovChoice(); return; }
+
   document.getElementById('card-type-modal').classList.add('hidden');
   _cardModalOpen = false;
 
@@ -981,23 +1088,16 @@ function cancelCardChoice() {
 
 // ── Show card ─────────────────────────────────────────────────
 function showCard(card, cardType) {
-  document.getElementById('card-type-label').textContent = CARD_TYPE_LABELS[cardType] || cardType;
-  document.getElementById('card-name').textContent = card.name || '—';
-
-  let details = '';
-  if (card.pay)    details += `Дохід: $${card.pay}/міс\n`;
-  if (card.amount) details += `Сума: +$${card.amount}\n`;
-  if (card.invest) details += `Вкладення: $${card.invest}\n`;
-  if (card.pct)    details += `Пасивний дохід: $${Math.round(card.invest * card.pct)}/міс\n`;
-  if (card.mult)   details += `Прибуток: +$${Math.round(card.invest * card.mult)}\n`;
-  if (card.term)   details += `Термін: ${card.term} міс.\n`;
-  if (card.cost)   details += `Вартість: $${card.cost}\n`;
-  if (card.effect) details += card.effect;
-  document.getElementById('card-details').textContent = details.trim();
-
-  const reqs = card.req || card.requirements || [];
-  document.getElementById('card-requirements').textContent =
-    reqs.length ? `⚠ Вимоги: ${reqs.join(', ')}` : '';
+  const area = document.getElementById('card-area');
+  area.innerHTML = `
+    ${window.renderPhysicalCardHTML(card, cardType)}
+    <div id="card-actions" style="display:flex;gap:10px">
+      <button id="btn-accept"  onclick="decide('accept')">✅ Погодитися</button>
+      <button id="btn-decline" onclick="decide('decline')">❌ Відхилити</button>
+    </div>
+    <div id="card-decided" class="hidden" style="text-align:center;padding:14px;font-size:15px;font-weight:600;color:var(--sub)">
+      <div id="decided-text"></div>
+    </div>`;
 
   const autoTypes = ['uvolen','lyubov','rebenok','poluchka','expense'];
   if (autoTypes.includes(cardType)) {
@@ -1339,8 +1439,17 @@ async function confirmSettlement() {
 }
 
 function _proceedAfterSettlement() {
-  if (_currentCell && (_currentCell.type === 'dela' || _currentCell.type === 'trening') && !_cardModalOpen) {
-    showCardTypeModal(_currentCell.type, _currentCell.label);
+  if (!_currentCell) return;
+  const ctype = _currentCell.type;
+  if ((ctype === 'dela' || ctype === 'lyubov') && !_cardModalOpen && !_eventModalOpen) {
+    showCardTypeModal(ctype, _currentCell.label);
+  } else if ((ctype === 'uvolen' || ctype === 'rebenok') && !_eventModalOpen) {
+    _eventModalOpen = true;
+    if (ctype === 'uvolen') handleUvolenCell();
+    else handleRebenokCell();
+  } else if (ctype === 'trening' && !_sharedCardInitiated) {
+    _sharedCardInitiated = true;
+    initiateSharedCard();
   }
 }
 
@@ -1477,6 +1586,188 @@ async function afterDebtResolved() {
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
+}
+
+// ── Shared Training / Course card ────────────────────────────
+async function initiateSharedCard() {
+  const courses   = (CARDS.course   || []).map(c => ({ ...c, _t: 'course' }));
+  const trainings = (CARDS.training || []).map(c => ({ ...c, _t: 'training' }));
+  const combined  = [...courses, ...trainings];
+  if (!combined.length) return;
+  const picked   = combined[Math.floor(Math.random() * combined.length)];
+  const cardType = picked._t;
+  const card     = { ...picked };
+  delete card._t;
+  await window._fbSetSharedCard(_db, _sessionId, cardType, card);
+}
+
+function handleSharedCardUpdate(sc) {
+  const modal = document.getElementById('shared-card-modal');
+  if (!sc) {
+    modal.classList.add('hidden');
+    _sharedCardDecided = false;
+    _sharedCardAcked   = false;
+    return;
+  }
+  modal.classList.remove('hidden');
+  if (sc.stage === 'front') {
+    renderSharedFront(sc);
+  } else if (sc.stage === 'back') {
+    renderSharedBack(sc);
+  }
+}
+
+function renderSharedFront(sc) {
+  document.getElementById('shared-card-render').innerHTML =
+    window.renderPhysicalCardHTML(sc.card, sc.cardType, { hideEffect: true });
+  document.getElementById('shared-card-front-ui').classList.remove('hidden');
+  document.getElementById('shared-card-back-ui').classList.add('hidden');
+
+  const waitMsg  = document.getElementById('shared-waiting-msg');
+  const voteBtns = document.getElementById('shared-vote-row');
+  if (_sharedCardDecided) {
+    waitMsg.classList.remove('hidden');
+    voteBtns.classList.add('hidden');
+  } else {
+    waitMsg.classList.add('hidden');
+    voteBtns.classList.remove('hidden');
+  }
+}
+
+function renderSharedBack(sc) {
+  document.getElementById('shared-card-render').innerHTML =
+    window.renderPhysicalCardHTML(sc.card, sc.cardType, { hideEffect: false });
+  document.getElementById('shared-card-front-ui').classList.add('hidden');
+  const backUi = document.getElementById('shared-card-back-ui');
+  backUi.classList.remove('hidden');
+  document.getElementById('btn-shared-ok').disabled = _sharedCardAcked;
+}
+
+async function sharedCardVote(decision) {
+  if (_sharedCardDecided) return;
+  _sharedCardDecided = true;
+  await window._fbSharedCardDecision(_db, _sessionId, _myPlayerKey, decision);
+  const waitMsg  = document.getElementById('shared-waiting-msg');
+  const voteBtns = document.getElementById('shared-vote-row');
+  if (waitMsg)  waitMsg.classList.remove('hidden');
+  if (voteBtns) voteBtns.classList.add('hidden');
+}
+
+async function sharedCardOk() {
+  if (_sharedCardAcked) return;
+  _sharedCardAcked = true;
+  const btn = document.getElementById('btn-shared-ok');
+  if (btn) btn.disabled = true;
+  await window._fbSharedCardAck(_db, _sessionId, _myPlayerKey);
+}
+
+// ── Event Modal ───────────────────────────────────────────────
+function showEventModal(emoji, title, titleColor, message, onOk) {
+  _eventModalOkFn = onOk;
+  document.getElementById('event-modal-emoji').textContent = emoji;
+  const titleEl = document.getElementById('event-modal-title');
+  titleEl.textContent  = title;
+  titleEl.style.color  = titleColor;
+  document.getElementById('event-modal-msg').textContent = message;
+  document.getElementById('event-modal').classList.remove('hidden');
+}
+
+async function eventModalOk() {
+  const fn = _eventModalOkFn;
+  _eventModalOkFn = null;
+  if (fn) await fn();
+}
+
+// ── ЛЮБОВЬ ────────────────────────────────────────────────────
+async function handleLyubovChoice() {
+  document.getElementById('card-type-modal').classList.add('hidden');
+  _cardModalOpen  = false;
+  _eventModalOpen = true;
+
+  const p = _lastPlayerData || {};
+  let msg, writeData = null;
+  if (!p.hasPartner) {
+    msg       = '💍 Ти зустрів кохання! Тепер у тебе є партнер.';
+    writeData = { hasPartner: true };
+  } else {
+    msg = '💍 Партнер вже є. Романтика продовжується!';
+  }
+
+  showEventModal('💍', 'ЛЮБОВЬ', '#f472b6', msg, async () => {
+    if (writeData) {
+      await window._fbUpdate(
+        window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+        writeData
+      );
+    }
+    await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}`), { turnPhase: 'done' });
+    document.getElementById('event-modal').classList.add('hidden');
+    _eventModalOpen = false;
+  });
+}
+
+// ── ТЫ УВОЛЕН ────────────────────────────────────────────────
+async function handleUvolenCell() {
+  const p       = _lastPlayerData || {};
+  const incomes = (p.incomes || []).filter(Boolean);
+  const employees = incomes.filter(i => i.type === 'employee');
+
+  let msg, newIncomes = null;
+  if (employees.length === 0) {
+    msg = 'На вас це не вплинуло. Ви й так не працювали на дядю — вільна пташка! 🕊️';
+  } else {
+    const getTs = x => x.addedAt || (x.id ? parseInt(String(x.id).replace(/\D/g, '')) : 0);
+    const toFire = employees.length === 1
+      ? employees[0]
+      : employees.reduce((best, e) => getTs(e) > getTs(best) ? e : best);
+    msg       = `Вас звільнено з посади "${toFire.name || 'невідома посада'}".`;
+    newIncomes = incomes.filter(i => i !== toFire);
+  }
+
+  showEventModal('🔥', 'ТЕБЕ ЗВІЛЬНЕНО', '#7c3aed', msg, async () => {
+    if (newIncomes !== null) {
+      await window._fbSet(
+        window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}/incomes`),
+        newIncomes.length ? newIncomes : null
+      );
+    }
+    await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}`), { turnPhase: 'done' });
+    document.getElementById('event-modal').classList.add('hidden');
+    _eventModalOpen = false;
+  });
+}
+
+// ── РЕБЕНОК ───────────────────────────────────────────────────
+async function handleRebenokCell() {
+  const p    = _lastPlayerData || {};
+  let msg, writeData = null;
+
+  if (!p.hasPartner) {
+    msg = 'Без змін. У вас ще немає партнера.';
+  } else {
+    const kids = p.kidsCount || 0;
+    if (kids >= 3) {
+      msg = 'Без змін. У вас уже максимальна кількість дітей у грі (3).';
+    } else {
+      const newKids = kids + 1;
+      writeData = { kidsCount: newKids };
+      msg = newKids === 1
+        ? 'Вітаємо з народженням первістка! 👶'
+        : `Вітаємо з народженням дитини! Тепер їх у вас ${newKids}. 👶`;
+    }
+  }
+
+  showEventModal('👶', 'РЕБЕНОК', '#86efac', msg, async () => {
+    if (writeData) {
+      await window._fbUpdate(
+        window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+        writeData
+      );
+    }
+    await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}`), { turnPhase: 'done' });
+    document.getElementById('event-modal').classList.add('hidden');
+    _eventModalOpen = false;
+  });
 }
 </script>
 </body>

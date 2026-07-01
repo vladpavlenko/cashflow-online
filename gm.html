@@ -469,6 +469,19 @@
       height: auto;
     }
 
+    /* ── Physical Card (same as index.html) ── */
+    .pcard { background:#f8f4ec; border:2px solid #3a2c1a; border-radius:12px; overflow:hidden; color:#1a1008; margin-bottom:12px; box-shadow:0 2px 12px rgba(0,0,0,0.25); }
+    .pcard-header { background:#e8dfc8; border-bottom:1.5px solid #c4b090; padding:8px 14px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:#6c4a20; }
+    .pcard-name { padding:12px 14px 8px; font-size:18px; font-weight:800; color:#1a1008; line-height:1.2; border-bottom:1px solid #d8ccb8; }
+    .pcard-body { padding:10px 14px; }
+    .pcard-row { display:flex; justify-content:space-between; align-items:baseline; padding:3px 0; border-bottom:1px solid rgba(60,40,10,0.07); font-size:13px; }
+    .pcard-row:last-child { border-bottom:none; }
+    .pcard-key { color:#7c6040; }
+    .pcard-val { font-weight:700; color:#1a1008; font-family:var(--mono); }
+    .pcard-req { margin-top:8px; padding:5px 8px; background:rgba(180,40,0,0.08); border-radius:6px; color:#8b2000; font-size:12px; }
+    .pcard-effect { margin-top:8px; font-style:italic; color:#3a2c18; font-size:13px; line-height:1.5; }
+    .pcard-hidden { text-align:center; padding:12px 0; color:#9c8c70; font-style:italic; font-size:13px; }
+
     .alert-banner {
       background: rgba(239,68,68,0.1);
       backdrop-filter: blur(8px);
@@ -1171,12 +1184,26 @@ function onSessionUpdate(session) {
     }
   }
 
-  // Auto-send when player chose a card type from dela/trening
+  // Auto-send when player chose a card type from dela (trening is now handled client-side)
   if (phase === 'waiting_card') {
     const req = session.cardTypeRequest;
     if (req?.cardType && _lastAutoSentCardTs !== req.ts) {
       _lastAutoSentCardTs = req.ts;
       gmSendCard(req.cardType, req.playerKey);
+    }
+  }
+
+  // Shared-card stage management (GM is authoritative for transitions)
+  const sc      = session.sharedCard;
+  const players = session.players || {};
+  const playerCount = Object.keys(players).length;
+  if (sc && playerCount > 0) {
+    const decidedCount = Object.keys(sc.decisions || {}).length;
+    const ackedCount   = Object.keys(sc.acks      || {}).length;
+    if (sc.stage === 'front' && decidedCount >= playerCount) {
+      window._fbSetSharedCardStage(window._db, _sessionId, 'back');
+    } else if (sc.stage === 'back' && ackedCount >= playerCount) {
+      window._fbClearSharedCard(window._db, _sessionId);
     }
   }
 }
@@ -1222,7 +1249,23 @@ function updateTurnPhaseUI(phase, session, players) {
     const r = session.lastRoll;
     ctPlayer.textContent = `🎲 ${name} кинув ${r?.dice} → ${r?.cell?.label || '?'} (кл.${r?.position})`;
     ctPlayer.style.color = 'var(--text)';
-    if (r?.crossedFinish) {
+    const sc = session.sharedCard;
+    if (sc) {
+      const decisions   = sc.decisions || {};
+      const acks        = sc.acks      || {};
+      const playerRows  = Object.entries(players).map(([key, p]) => {
+        const dec = decisions[key];
+        const ack = acks[key];
+        const icon = ack ? '✅ OK' : dec === 'accept' ? '✅ Погодився' : dec === 'decline' ? '❌ Відмовився' : '⏳ Ще чекаємо';
+        return `<div style="font-size:12px;padding:2px 0">${p.playerName || key}: <strong>${icon}</strong></div>`;
+      }).join('');
+      ctCard.innerHTML = window.renderPhysicalCardHTML(sc.card, sc.cardType, { hideEffect: sc.stage === 'front' }) +
+        `<div style="margin-top:8px;padding:8px;background:rgba(255,255,255,0.04);border-radius:8px;border:1px solid var(--border)">
+           <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--sub);margin-bottom:6px">Рішення гравців</div>
+           ${playerRows}
+         </div>`;
+      ctCard.style.color = '';
+    } else if (r?.crossedFinish) {
       ctCard.textContent = `🏁 ${name} перетнув ПОЛУЧКА — розраховується`;
       ctCard.style.color = 'var(--gold)';
     } else {
@@ -1245,21 +1288,27 @@ function updateTurnPhaseUI(phase, session, players) {
   } else if (phase === 'deciding') {
     ctPlayer.textContent = `🃏 ${name} приймає рішення по картці...`;
     ctPlayer.style.color = 'var(--blue)';
-    const ct = CARD_TYPE_LABELS[session.currentCard?.cardType] || session.currentCard?.cardType;
-    if (ct) { ctCard.textContent = `📋 Картка: ${ct}`; ctCard.classList.remove('hidden'); }
+    if (session.currentCard?.card) {
+      ctCard.innerHTML = window.renderPhysicalCardHTML(session.currentCard.card, session.currentCard.cardType);
+      ctCard.classList.remove('hidden');
+    }
     cancelBtn.textContent = '🚫 Скасувати хід';
     cancelBtn.onclick = cancelTurn;
 
   } else if (phase === 'done') {
     const dec     = session.playerDecision?.decision;
-    const decText = dec === 'accept' ? '✅ Прийняв' : '❌ Відмовився';
+    const decText = dec === 'accept' ? '✅ Погодився' : dec === 'decline' ? '❌ Відмовився' : '—';
     ctPlayer.textContent = `${decText}: ${name}`;
-    ctPlayer.style.color = dec === 'accept' ? 'var(--green)' : 'var(--red)';
-    const ct = CARD_TYPE_LABELS[session.currentCard?.cardType] || session.currentCard?.cardType;
-    if (ct) { ctCard.textContent = `📋 Картка: ${ct}`; ctCard.classList.remove('hidden'); }
-    ctDecision.textContent = decText;
-    ctDecision.style.color = dec === 'accept' ? 'var(--green)' : 'var(--red)';
-    ctDecision.classList.remove('hidden');
+    ctPlayer.style.color = dec === 'accept' ? 'var(--green)' : dec === 'decline' ? 'var(--red)' : 'var(--sub)';
+    if (session.currentCard?.card) {
+      ctCard.innerHTML = window.renderPhysicalCardHTML(session.currentCard.card, session.currentCard.cardType);
+      ctCard.classList.remove('hidden');
+    }
+    if (dec) {
+      ctDecision.textContent = decText;
+      ctDecision.style.color = dec === 'accept' ? 'var(--green)' : 'var(--red)';
+      ctDecision.classList.remove('hidden');
+    }
     cancelBtn.textContent = '✅ Завершити хід';
     cancelBtn.onclick = finishTurn;
   }
@@ -1274,6 +1323,7 @@ async function cancelTurn() {
     cardTypeRequest: null,
     currentCard:     null,
     playerDecision:  null,
+    sharedCard:      null,
   });
 }
 
