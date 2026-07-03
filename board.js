@@ -94,7 +94,10 @@ const CELL_COORDS_RING1_DUAL = [
 ];
 
 // Outer ring of cashflow-board-lap2.png — 70 cells, coords TBD (stubs at center)
-const CELL_COORDS_LAP2 = Array.from({ length: 70 }, (_, i) => ({ x: 50, y: 58 }));
+// index 0 is the starting cell (top-left corner); rest are placeholder until calibrated
+const CELL_COORDS_LAP2 = Array.from({ length: 70 }, (_, i) => (
+  i === 0 ? { x: 8.5, y: 7.5 } : { x: 50, y: 58 }
+));
 
 // dualMode = true when any player has lap === 2
 function getCellCenter(cellId, lap, dualMode) {
