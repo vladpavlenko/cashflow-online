@@ -1381,7 +1381,7 @@ function renderTurnControls(players, phase) {
     const toLap1Disabled = playerLap === 1;
     return `
       <div class="player-turn-row">
-        <span>${p.playerName || key} · $${p.cash || 0} · кл.${p.position || 0} · кол.${p.round || 1} · ○${playerLap}</span>
+        <span>${p.playerName || key} · $${p.cash || 0} · кл.${p.position || 0} · ○${playerLap}</span>
         ${badge}
         <span class="ptr-spacer"></span>
         <div class="ptr-menu">
