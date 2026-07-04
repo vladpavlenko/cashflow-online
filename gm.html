@@ -506,6 +506,46 @@
     .pcard-req { margin-top:8px; padding:5px 8px; background:rgba(180,40,0,0.08); border-radius:6px; color:#8b2000; font-size:12px; }
     .pcard-effect { margin-top:8px; font-style:italic; color:#3a2c18; font-size:13px; line-height:1.5; }
     .pcard-hidden { text-align:center; padding:12px 0; color:#9c8c70; font-style:italic; font-size:13px; }
+    .pcard-text { margin-top:8px; font-size:12px; color:#5a4a38; line-height:1.5; }
+
+    /* ── New card-render layout ── */
+    .card-render { background:#f5f2ea; border:2px solid #1a1a1a; border-radius:14px; padding:18px; color:#1a1a1a; margin-bottom:4px; }
+    .card-header { font-size:11px; text-transform:uppercase; letter-spacing:2px; color:#666; margin-bottom:12px; border-bottom:1px solid #ccc; padding-bottom:8px; }
+    .card-content-row { display:flex; gap:14px; align-items:flex-start; }
+    .card-text-col { flex:1; min-width:0; }
+    .card-image-col { flex-shrink:0; width:110px; }
+    .card-image-col img { width:100%; height:auto; max-height:140px; object-fit:cover; border-radius:8px; border:1px solid #ccc; display:block; }
+    .card-fulltext { font-size:14px; line-height:1.6; margin-bottom:14px; white-space:pre-wrap; }
+    .card-fields { display:flex; flex-direction:column; gap:6px; border-top:1px dashed #999; padding-top:10px; }
+    .card-field { display:flex; justify-content:space-between; font-size:13px; gap:8px; }
+    .cf-label { color:#555; font-weight:600; flex-shrink:0; }
+    .cf-value { font-weight:700; text-align:right; }
+    .cf-money { color:#15803d; }
+
+    /* ── Cards Import Section ── */
+    #cards-import-section {
+      background: rgba(17,20,32,0.6);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px;
+    }
+    #cards-status { margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+    .btn-ghost {
+      background: transparent; border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 14px; color: var(--sub);
+      font-family: var(--body); font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+
+    /* ── Physical Card Image ── */
+    .card-image-wrap { width:100%; max-height:200px; overflow:hidden; border-radius:12px; margin-bottom:0; }
+    .card-image-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
 
     .alert-banner {
       background: rgba(239,68,68,0.1);
@@ -663,6 +703,22 @@
   </div>
 
   <div class="gm-content">
+
+    <div id="cards-import-section">
+      <div class="card-title">📥 Картки (локально, не в git)</div>
+      <div id="cards-status"></div>
+      <input type="file" id="cards-batch-input" accept=".txt" multiple style="display:none"
+             onchange="handleBatchImport(event)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="document.getElementById('cards-batch-input').click()"
+                style="background:linear-gradient(180deg,#2d4a8a,#1e3570);border:none;border-radius:10px;padding:9px 16px;color:#fff;font-family:var(--body);font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(30,53,112,0.4)">
+          📁 Імпортувати всі картки
+        </button>
+        <button onclick="reshuffleAllDecks()" class="btn-ghost">🔄 Перетасувати</button>
+        <button onclick="clearAllCards()" class="btn-ghost">🗑️ Очистити</button>
+      </div>
+    </div>
+
     <div class="empty-state" id="empty-state">
       <div class="empty-icon">⏳</div>
       <div class="empty-title" data-i18n="gmEmptyTitle">Очікуємо гравців</div>
@@ -1283,7 +1339,7 @@ function updateTurnPhaseUI(phase, session, players) {
         const icon = ack ? '✅ OK' : dec === 'accept' ? '✅ Погодився' : dec === 'decline' ? '❌ Відмовився' : '⏳ Ще чекаємо';
         return `<div style="font-size:12px;padding:2px 0">${p.playerName || key}: <strong>${icon}</strong></div>`;
       }).join('');
-      ctCard.innerHTML = window.renderPhysicalCardHTML(sc.card, sc.cardType, { hideEffect: sc.stage === 'front' }) +
+      ctCard.innerHTML = window.renderCardHTML(sc.card, sc.cardType, { hideEffect: sc.stage === 'front' }) +
         `<div style="margin-top:8px;padding:8px;background:rgba(255,255,255,0.04);border-radius:8px;border:1px solid var(--border)">
            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--sub);margin-bottom:6px">Рішення гравців</div>
            ${playerRows}
@@ -1313,7 +1369,11 @@ function updateTurnPhaseUI(phase, session, players) {
     ctPlayer.textContent = `🃏 ${name} приймає рішення по картці...`;
     ctPlayer.style.color = 'var(--blue)';
     if (session.currentCard?.card) {
-      ctCard.innerHTML = window.renderPhysicalCardHTML(session.currentCard.card, session.currentCard.cardType);
+      const card = session.currentCard.card;
+      const deckInfo = card._deckRemaining !== undefined
+        ? `<div style="font-size:11px;color:var(--sub);margin-top:6px">📋 Колода: ${card._deckRemaining} / ${card._deckTotal} залишилось</div>`
+        : '';
+      ctCard.innerHTML = window.renderCardHTML(card, session.currentCard.cardType) + deckInfo;
       ctCard.classList.remove('hidden');
     }
     cancelBtn.textContent = '🚫 Скасувати хід';
@@ -1325,7 +1385,11 @@ function updateTurnPhaseUI(phase, session, players) {
     ctPlayer.textContent = `${decText}: ${name}`;
     ctPlayer.style.color = dec === 'accept' ? 'var(--green)' : dec === 'decline' ? 'var(--red)' : 'var(--sub)';
     if (session.currentCard?.card) {
-      ctCard.innerHTML = window.renderPhysicalCardHTML(session.currentCard.card, session.currentCard.cardType);
+      const card = session.currentCard.card;
+      const deckInfo = card._deckRemaining !== undefined
+        ? `<div style="font-size:11px;color:var(--sub);margin-top:6px">📋 Колода: ${card._deckRemaining} / ${card._deckTotal} залишилось</div>`
+        : '';
+      ctCard.innerHTML = window.renderCardHTML(card, session.currentCard.cardType) + deckInfo;
       ctCard.classList.remove('hidden');
     }
     if (dec) {
@@ -1429,10 +1493,88 @@ async function gmSendCard(cardType, playerKey) {
 
 // ══════════════════════════════════════════════
 
+// ══════════════════════════════════════════════
+// CARDS IMPORT & DECK MANAGEMENT
+// ══════════════════════════════════════════════
+const VALID_TYPES = [
+  'jobs_employee','jobs_self','random_income','startups',
+  'deals','courses','trainings','expenses'
+];
+
+async function handleBatchImport(event) {
+  const files = Array.from(event.target.files);
+  if (files.length === 0) return;
+
+  const imported = [];
+  const skipped  = [];
+
+  for (const file of files) {
+    const typeName = file.name.replace(/\.txt$/i, '');
+    if (!VALID_TYPES.includes(typeName)) { skipped.push(file.name); continue; }
+    const text  = await file.text();
+    const cards = parseCardsText(text);
+    if (cards.length > 0) {
+      localStorage.setItem(`cf_cards_${typeName}`, JSON.stringify(cards));
+      localStorage.removeItem(`cf_deck_${typeName}`);
+      imported.push(`${typeName}: ${cards.length}`);
+    } else {
+      skipped.push(`${file.name} (порожньо)`);
+    }
+  }
+
+  event.target.value = '';
+  updateCardsStatus();
+
+  alert(
+    `Імпортовано:\n${imported.join('\n')}` +
+    (skipped.length ? `\n\nПропущено:\n${skipped.join('\n')}` : '')
+  );
+}
+
+function clearAllCards() {
+  if (!confirm('Видалити всі імпортовані картки з цього браузера?')) return;
+  VALID_TYPES.forEach(t => {
+    localStorage.removeItem(`cf_cards_${t}`);
+    localStorage.removeItem(`cf_deck_${t}`);
+  });
+  updateCardsStatus();
+}
+
+function reshuffleAllDecks() {
+  if (!confirm('Перетасувати всі колоди? Історія розданих карток обнулиться.')) return;
+  VALID_TYPES.forEach(t => localStorage.removeItem(`cf_deck_${t}`));
+  updateCardsStatus();
+  alert('Всі колоди перетасовано.');
+}
+
+function updateCardsStatus() {
+  const types = {
+    jobs_employee: 'Робота на дядю',
+    jobs_self:     'Робота на себе',
+    random_income: 'Випадковий заробіток',
+    startups:      'Стартапи',
+    deals:         'Купи-Продай',
+    courses:       'Курси',
+    trainings:     'Тренінги',
+    expenses:      'Опять расходы',
+  };
+  const el = document.getElementById('cards-status');
+  if (!el) return;
+  el.innerHTML = Object.entries(types).map(([key, label]) => {
+    const cardsRaw = localStorage.getItem(`cf_cards_${key}`);
+    const deckRaw  = localStorage.getItem(`cf_deck_${key}`);
+    const total     = cardsRaw ? JSON.parse(cardsRaw).length : 0;
+    const remaining = deckRaw  ? JSON.parse(deckRaw).length  : total;
+    const color = total > 0 ? 'var(--green)' : 'var(--sub)';
+    return `<div style="font-size:11px;color:${color}">${label}: ${remaining}/${total}</div>`;
+  }).join('');
+}
+
 function init() {
   applyLang();
   const saved = sessionStorage.getItem('gm_room');
   if (saved) { document.getElementById('room-inp').value = saved; }
+  updateCardsStatus();
 }
 init();
 window.addEventListener('cf-lang-changed', () => { if (typeof renderDashboard === 'function') renderDashboard(); });

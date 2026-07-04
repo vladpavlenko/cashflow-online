@@ -98,11 +98,147 @@ const CARDS = {
   expense: [20,30,50,50,70,80,80,100,100,120,150,150,200,200,300,300,500].map(a => ({amount: a})),
 };
 
-function drawCard(type) {
-  const deck = CARDS[type];
-  if (!deck || deck.length === 0) return null;
-  return { ...deck[Math.floor(Math.random() * deck.length)] };
+function parseCardsText(rawText) {
+  const blocks = rawText.split(/^---\s*$/m).map(b => b.trim()).filter(Boolean);
+  return blocks.map(block => {
+    const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+    const card = {};
+    lines.forEach(line => {
+      const idx = line.indexOf(':');
+      if (idx === -1) return;
+      const key = line.slice(0, idx).trim().toUpperCase();
+      const val = line.slice(idx + 1).trim();
+      if (key === 'NAME')   card.name   = val;
+      if (key === 'PAY')    card.pay    = parseFloat(val) || 0;
+      if (key === 'BONUS')  card.bonus  = val;
+      if (key === 'REQ')    card.req    = (val === '-' ? [] : val.split(',').map(s => s.trim()));
+      if (key === 'TEXT')   card.text   = val;
+      if (key === 'IMAGE')  card.image  = val;
+      if (key === 'COST')   card.cost   = parseFloat(val) || 0;
+      if (key === 'INVEST') card.invest = parseFloat(val) || 0;
+      if (key === 'TERM')   card.term   = parseFloat(val) || 0;
+      if (key === 'EFFECT') card.effect = val;
+      if (key === 'FIELD')  card.field  = val;
+    });
+    return card;
+  }).filter(c => c.name);
 }
+
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+const _TYPE_TO_LS = {
+  emp: 'jobs_employee', self: 'jobs_self', random: 'random_income',
+  startup: 'startups', deal: 'deals', course: 'courses',
+  training: 'trainings', expense: 'expenses',
+};
+
+function drawCard(type) {
+  const lsType   = _TYPE_TO_LS[type] || type;
+  const cardsRaw = localStorage.getItem(`cf_cards_${lsType}`);
+
+  if (!cardsRaw) {
+    const fallback = CARDS[type] || [];
+    if (fallback.length === 0) return null;
+    return { ...fallback[Math.floor(Math.random() * fallback.length)] };
+  }
+
+  const allCards = JSON.parse(cardsRaw);
+  let deckRaw = localStorage.getItem(`cf_deck_${lsType}`);
+  let deck = deckRaw ? JSON.parse(deckRaw) : [];
+
+  if (deck.length === 0) {
+    deck = shuffleArray(allCards.map((_, i) => i));
+    console.log(`♻️ Колода "${type}" вичерпана — перетасовано заново`);
+  }
+
+  const cardIndex = deck.pop();
+  localStorage.setItem(`cf_deck_${lsType}`, JSON.stringify(deck));
+
+  const card = { ...allCards[cardIndex] };
+  card._deckRemaining = deck.length;
+  card._deckTotal     = allCards.length;
+
+  return card;
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// Renders a card using the new layout: TEXT (main) + side image + structured fields.
+// opts.hideEffect = true  → hide card.effect (training front side before vote reveal)
+window.renderCardHTML = function(card, cardType, opts) {
+  opts = opts || {};
+  const TYPE_ICONS = {
+    emp: '💼', self: '🧑‍💻', random: '💰', deal: '🤝',
+    startup: '🚀', course: '📖', training: '🧠', expense: '💸',
+    uvolen: '🔥', lyubov: '💍', rebenok: '👶', poluchka: '🏁',
+  };
+  const TYPE_LABELS = {
+    emp: 'Робота на дядю', self: 'Робота на себе',
+    random: 'Випадковий заробіток', deal: 'Купи-Продай',
+    startup: 'Стартап / Кейс', course: 'Курс',
+    training: 'Тренінг', expense: 'Витрати',
+    uvolen: 'Звільнено', lyubov: 'Любов',
+    rebenok: 'Дитина', poluchka: 'День зарплати',
+  };
+  const icon  = TYPE_ICONS[cardType]  || '';
+  const label = TYPE_LABELS[cardType] || cardType;
+
+  // card.text is primary; fall back to card.effect when not hidden
+  const mainText = card.text || (opts.hideEffect ? '' : (card.effect || ''));
+
+  const hasReq   = card.req && card.req.length > 0;
+  const hasPay   = card.pay > 0;
+  const hasBonus = card.bonus && card.bonus.length > 0;
+  const hasImage = card.image && card.image.length > 0;
+
+  // Structured fields
+  const reqHtml   = hasReq   ? `<div class="card-field"><span class="cf-label">Вимоги:</span><span class="cf-value">${escapeHtml(card.req.join(', '))}</span></div>` : '';
+  const payHtml   = hasPay   ? `<div class="card-field"><span class="cf-label">Зарплата:</span><span class="cf-value cf-money">$${card.pay.toLocaleString()}</span></div>` : '';
+  const bonusHtml = hasBonus ? `<div class="card-field"><span class="cf-label">Бонус:</span><span class="cf-value cf-money">${escapeHtml(card.bonus)}</span></div>` : '';
+
+  // Extra fields for non-employee card types (stubs and future .txt types)
+  const extra = [];
+  if (card.amount !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Виплата:</span><span class="cf-value cf-money">+$${card.amount}</span></div>`);
+  if (card.cost   !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вартість:</span><span class="cf-value cf-money">$${card.cost}</span></div>`);
+  if (card.invest !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вкладення:</span><span class="cf-value cf-money">$${card.invest}</span></div>`);
+  if (card.pct && card.invest)   extra.push(`<div class="card-field"><span class="cf-label">Пасив. дохід:</span><span class="cf-value cf-money">$${Math.round(card.invest * card.pct)}/міс</span></div>`);
+  if (card.mult && card.invest)  extra.push(`<div class="card-field"><span class="cf-label">Прибуток:</span><span class="cf-value cf-money">+$${Math.round(card.invest * card.mult)}</span></div>`);
+  if (card.term !== undefined)   extra.push(`<div class="card-field"><span class="cf-label">Термін:</span><span class="cf-value">${card.term} міс.</span></div>`);
+  if (card.field !== undefined)  extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.field)}</span></div>`);
+
+  const effectHtml = opts.hideEffect
+    ? `<div class="card-field"><span class="cf-label">Ефект:</span><span class="cf-value" style="color:#888;font-style:italic">🔒 Невідомий...</span></div>`
+    : '';
+
+  const allFields = reqHtml + payHtml + bonusHtml + extra.join('') + effectHtml;
+  const fieldsHtml = allFields
+    ? `<div class="card-fields">${allFields}</div>`
+    : '';
+
+  const textHtml  = mainText ? `<div class="card-fulltext">${escapeHtml(mainText)}</div>` : '';
+  const imageHtml = hasImage
+    ? `<div class="card-image-col"><img src="assets/cards_images/${card.image}" alt="" onerror="this.parentElement.style.display='none'"></div>`
+    : '';
+
+  return `<div class="card-render">
+    <div class="card-header">${icon} ${label}</div>
+    <div class="card-content-row">
+      <div class="card-text-col">${textHtml}${fieldsHtml}</div>
+      ${imageHtml}
+    </div>
+  </div>`;
+};
 
 // Renders a physical-card-style HTML block.
 // opts.hideEffect = true  → show "effect unknown" placeholder (training front side)
@@ -122,6 +258,7 @@ window.renderPhysicalCardHTML = function(card, cardType, opts) {
 
   let rows = '';
   if (card.pay    !== undefined) rows += r('Дохід:', `$${card.pay}/міс`);
+  if (card.bonus  !== undefined) rows += r('Бонус:', card.bonus);
   if (card.amount !== undefined) rows += r('Виплата:', `+$${card.amount}`);
   if (card.cost   !== undefined) rows += r('Вартість:', `$${card.cost}`);
   if (card.invest !== undefined) rows += r('Вкладення:', `$${card.invest}`);
@@ -140,10 +277,16 @@ window.renderPhysicalCardHTML = function(card, cardType, opts) {
   } else if (card.effect) {
     effectHtml = `<div class="pcard-effect">✨ ${card.effect}</div>`;
   }
+  const textHtml = card.text ? `<div class="pcard-text">${card.text}</div>` : '';
 
-  const body = rows + reqHtml + effectHtml;
+  const imageHtml = card.image
+    ? `<div class="card-image-wrap"><img src="assets/cards_images/${card.image}" alt="${card.name || ''}" onerror="this.style.display='none'"></div>`
+    : '';
+
+  const body = rows + reqHtml + effectHtml + textHtml;
   return `<div class="pcard">
     <div class="pcard-header">${label}</div>
+    ${imageHtml}
     <div class="pcard-name">${card.name || '—'}</div>
     ${body ? `<div class="pcard-body">${body}</div>` : ''}
   </div>`;
