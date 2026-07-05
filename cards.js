@@ -124,6 +124,28 @@ function parseCardsText(rawText) {
   }).filter(c => c.name);
 }
 
+function parseJobsSelfCards(rawText) {
+  const blocks = rawText.split(/^---\s*$/m).map(b => b.trim()).filter(Boolean);
+  return blocks.map(block => {
+    const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+    const card = {};
+    lines.forEach(line => {
+      const idx = line.indexOf(':');
+      if (idx === -1) return;
+      const key = line.slice(0, idx).trim().toUpperCase();
+      const val = line.slice(idx + 1).trim();
+      if (key === 'NAME')            card.name           = val;
+      if (key === 'INDUSTRY')        card.industry        = val;
+      if (key === 'PAY')             card.pay             = parseFloat(val) || 0;
+      if (key === 'REQ')             card.req             = (val === '-' ? [] : val.split(',').map(s => s.trim()));
+      if (key === 'ADDITIONAL_COST') card.additionalCost  = (val === '-' ? null : val);
+      if (key === 'IMAGE')           card.image           = val;
+      if (key === 'TEXT')            card.text            = val;
+    });
+    return card;
+  }).filter(c => c.name);
+}
+
 function shuffleArray(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -140,16 +162,23 @@ const _TYPE_TO_LS = {
 };
 
 function drawCard(type) {
-  const lsType   = _TYPE_TO_LS[type] || type;
-  const cardsRaw = localStorage.getItem(`cf_cards_${lsType}`);
+  const lsType = _TYPE_TO_LS[type] || type;
 
-  if (!cardsRaw) {
-    const fallback = CARDS[type] || [];
-    if (fallback.length === 0) return null;
-    return { ...fallback[Math.floor(Math.random() * fallback.length)] };
-  }
+  // Priority 1: cards_data.js permanent file
+  const fromFile = window.LOCAL_CARDS?.[lsType];
 
-  const allCards = JSON.parse(cardsRaw);
+  // Priority 2: localStorage (manual import)
+  const fromStorage = (() => {
+    const raw = localStorage.getItem(`cf_cards_${lsType}`);
+    return raw ? JSON.parse(raw) : null;
+  })();
+
+  const allCards = (fromFile && fromFile.length > 0) ? fromFile
+                 : (fromStorage && fromStorage.length > 0) ? fromStorage
+                 : (CARDS[type] || []);
+
+  if (allCards.length === 0) return null;
+
   let deckRaw = localStorage.getItem(`cf_deck_${lsType}`);
   let deck = deckRaw ? JSON.parse(deckRaw) : [];
 
@@ -216,6 +245,8 @@ window.renderCardHTML = function(card, cardType, opts) {
   if (card.mult && card.invest)  extra.push(`<div class="card-field"><span class="cf-label">Прибуток:</span><span class="cf-value cf-money">+$${Math.round(card.invest * card.mult)}</span></div>`);
   if (card.term !== undefined)   extra.push(`<div class="card-field"><span class="cf-label">Термін:</span><span class="cf-value">${card.term} міс.</span></div>`);
   if (card.field !== undefined)  extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.field)}</span></div>`);
+  if (cardType === 'self' && card.industry)       extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.industry)}</span></div>`);
+  if (cardType === 'self' && card.additionalCost) extra.push(`<div class="card-field"><span class="cf-label">Докупити:</span><span class="cf-value cf-money">${escapeHtml(card.additionalCost)}</span></div>`);
 
   const effectHtml = opts.hideEffect
     ? `<div class="card-field"><span class="cf-label">Ефект:</span><span class="cf-value" style="color:#888;font-style:italic">🔒 Невідомий...</span></div>`
@@ -266,6 +297,8 @@ window.renderPhysicalCardHTML = function(card, cardType, opts) {
   if (card.mult && card.invest)  rows += r('Прибуток:', `+$${Math.round(card.invest * card.mult)}`);
   if (card.term   !== undefined) rows += r('Термін:', `${card.term} міс.`);
   if (card.field  !== undefined) rows += r('Сфера:', card.field);
+  if (cardType === 'self' && card.industry)       rows += r('Сфера:', card.industry);
+  if (cardType === 'self' && card.additionalCost) rows += r('Докупити:', card.additionalCost);
 
   const reqs = card.req || [];
   const reqHtml = reqs.length

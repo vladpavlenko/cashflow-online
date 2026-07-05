@@ -14,6 +14,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="lang.js"></script>
   <script src="engine.js"></script>
+  <!-- Локальний файл з картками — НЕ в git, підключається якщо існує -->
+  <script src="cards_data.js" onerror="console.warn('cards_data.js не знайдено — використовуються заглушки')"></script>
   <script src="cards.js"></script>
   <script src="board.js"></script>
 
@@ -716,6 +718,7 @@
         </button>
         <button onclick="reshuffleAllDecks()" class="btn-ghost">🔄 Перетасувати</button>
         <button onclick="clearAllCards()" class="btn-ghost">🗑️ Очистити</button>
+        <button onclick="exportCardsToFile()" class="btn-ghost">💾 Експортувати як cards_data.js</button>
       </div>
     </div>
 
@@ -1512,7 +1515,7 @@ async function handleBatchImport(event) {
     const typeName = file.name.replace(/\.txt$/i, '');
     if (!VALID_TYPES.includes(typeName)) { skipped.push(file.name); continue; }
     const text  = await file.text();
-    const cards = parseCardsText(text);
+    const cards = typeName === 'jobs_self' ? parseJobsSelfCards(text) : parseCardsText(text);
     if (cards.length > 0) {
       localStorage.setItem(`cf_cards_${typeName}`, JSON.stringify(cards));
       localStorage.removeItem(`cf_deck_${typeName}`);
@@ -1561,13 +1564,69 @@ function updateCardsStatus() {
   const el = document.getElementById('cards-status');
   if (!el) return;
   el.innerHTML = Object.entries(types).map(([key, label]) => {
-    const cardsRaw = localStorage.getItem(`cf_cards_${key}`);
+    const fromFile    = window.LOCAL_CARDS?.[key]?.length || 0;
+    const fromStorage = (() => {
+      const raw = localStorage.getItem(`cf_cards_${key}`);
+      return raw ? JSON.parse(raw).length : 0;
+    })();
     const deckRaw  = localStorage.getItem(`cf_deck_${key}`);
-    const total     = cardsRaw ? JSON.parse(cardsRaw).length : 0;
-    const remaining = deckRaw  ? JSON.parse(deckRaw).length  : total;
-    const color = total > 0 ? 'var(--green)' : 'var(--sub)';
-    return `<div style="font-size:11px;color:${color}">${label}: ${remaining}/${total}</div>`;
+    const total     = fromFile > 0 ? fromFile : fromStorage;
+    const remaining = deckRaw ? JSON.parse(deckRaw).length : total;
+    const source    = fromFile > 0 ? '📁 файл' : (fromStorage > 0 ? '💾 браузер' : '—');
+    const color     = total > 0 ? 'var(--green)' : 'var(--sub)';
+    return `<div style="font-size:11px;color:${color}">${label}: ${remaining}/${total} (${source})</div>`;
   }).join('');
+}
+
+function exportCardsToFile() {
+  const types = [
+    'jobs_employee','jobs_self','random_income','startups',
+    'deals','courses','trainings','expenses'
+  ];
+
+  const allCards = {};
+  let totalCount = 0;
+
+  types.forEach(type => {
+    const raw = localStorage.getItem(`cf_cards_${type}`);
+    if (raw) {
+      allCards[type] = JSON.parse(raw);
+      totalCount += allCards[type].length;
+    } else {
+      allCards[type] = [];
+    }
+  });
+
+  if (totalCount === 0) {
+    alert('Немає імпортованих карток для експорту. Спочатку імпортуй .txt файли.');
+    return;
+  }
+
+  const fileContent =
+`// cards_data.js
+// Згенеровано автоматично з локально імпортованих карток.
+// НЕ комітити у git — цей файл містить інтелектуальну власність.
+// Дата генерації: ${new Date().toLocaleString('uk-UA')}
+
+const LOCAL_CARDS = ${JSON.stringify(allCards, null, 2)};
+
+// Робимо доступним глобально для cards.js
+if (typeof window !== 'undefined') {
+  window.LOCAL_CARDS = LOCAL_CARDS;
+}
+`;
+
+  const blob = new Blob([fileContent], { type: 'text/javascript' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'cards_data.js';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  alert(`Експортовано ${totalCount} карток у файл cards_data.js.\nЗбережи його в папку проєкту і онови посилання у HTML.`);
 }
 
 function init() {
