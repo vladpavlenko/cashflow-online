@@ -197,6 +197,32 @@ function drawCard(type) {
   return card;
 }
 
+function _availableCardCount(type) {
+  const lsType = _TYPE_TO_LS[type] || type;
+  const fromFile    = window.LOCAL_CARDS?.[lsType];
+  const fromStorage = (() => {
+    const raw = localStorage.getItem(`cf_cards_${lsType}`);
+    return raw ? JSON.parse(raw) : null;
+  })();
+  return (fromFile && fromFile.length > 0) ? fromFile.length
+       : (fromStorage && fromStorage.length > 0) ? fromStorage.length
+       : (CARDS[type] || []).length;
+}
+
+// Draws for the shared "trening" board cell, which can land on either a course
+// or a training. Picks the type weighted by each deck's size (matching the old
+// "combine both decks into one pool" behavior) then draws via drawCard() so the
+// usual LOCAL_CARDS/localStorage/CARDS-stub priority and no-repeat shuffling apply.
+window.drawTreningCard = function() {
+  const courseCount   = _availableCardCount('course');
+  const trainingCount = _availableCardCount('training');
+  const total = courseCount + trainingCount;
+  if (total === 0) return null;
+  const cardType = Math.random() * total < courseCount ? 'course' : 'training';
+  const card = drawCard(cardType);
+  return card ? { cardType, card } : null;
+};
+
 function escapeHtml(str) {
   const d = document.createElement('div');
   d.textContent = str;

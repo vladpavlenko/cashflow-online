@@ -228,12 +228,13 @@ window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
 
 window._fbGrantTurn = async (db, sessionId, playerKey) => {
   await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}`), {
-    currentTurn:     playerKey,
-    turnPhase:       'rolling',
-    lastRoll:        null,
-    cardTypeRequest: null,
-    currentCard:     null,
-    playerDecision:  null,
+    currentTurn:       playerKey,
+    turnPhase:         'rolling',
+    lastRoll:          null,
+    cardTypeRequest:   null,
+    currentCard:       null,
+    playerDecision:    null,
+    sharedCardRequest: null,
   });
 };
 
@@ -285,9 +286,20 @@ window._fbSetCard = async (db, sessionId, playerKey, cardType, card) => {
 
 // ── Shared-card helpers (Training / Course cell) ──────────────────────────
 
+// A player landing on "trening" can't draw the card itself — the real course/
+// training catalog only ever gets imported into the GM's own tab (cards_data.js
+// is gitignored, never shipped to players). So the player just requests a draw
+// here; the GM listens for this and calls _fbSetSharedCard with the real card.
+window._fbRequestSharedCard = async (db, sessionId, playerKey) => {
+  await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}`), {
+    sharedCardRequest: { playerKey, ts: Date.now() },
+  });
+};
+
 window._fbSetSharedCard = async (db, sessionId, cardType, card) => {
   await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}`), {
-    sharedCard: { cardType, card, stage: 'front', decisions: {}, acks: {} },
+    sharedCard:        { cardType, card, stage: 'front', decisions: {}, acks: {} },
+    sharedCardRequest: null,
   });
 };
 

@@ -1630,16 +1630,12 @@ if ('serviceWorker' in navigator) {
 }
 
 // ── Shared Training / Course card ────────────────────────────
+// Landing on "trening" no longer draws the shared card client-side (that only
+// ever pulled from cards.js's tiny hardcoded stub deck — real cards_data.js
+// content only ever gets imported into the GM's own tab). Instead, request the
+// draw from GM, same pattern as cardTypeRequest for the "dela" cell.
 async function initiateSharedCard() {
-  const courses   = (CARDS.course   || []).map(c => ({ ...c, _t: 'course' }));
-  const trainings = (CARDS.training || []).map(c => ({ ...c, _t: 'training' }));
-  const combined  = [...courses, ...trainings];
-  if (!combined.length) return;
-  const picked   = combined[Math.floor(Math.random() * combined.length)];
-  const cardType = picked._t;
-  const card     = { ...picked };
-  delete card._t;
-  await window._fbSetSharedCard(_db, _sessionId, cardType, card);
+  await window._fbRequestSharedCard(_db, _sessionId, _myPlayerKey);
 }
 
 function handleSharedCardUpdate(sc) {

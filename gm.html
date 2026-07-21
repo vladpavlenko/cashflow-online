@@ -1222,6 +1222,7 @@ let _sessionId          = null;
 let _currentTurn        = null;
 let _lastAutoSentRollTs = null;
 let _lastAutoSentCardTs = null;
+let _lastAutoSentSharedCardTs = null;
 let _sharedCardFinalizing = false;
 
 const CARD_TYPE_LABELS = {
@@ -1288,13 +1289,20 @@ function onSessionUpdate(session) {
     }
   }
 
-  // Auto-send when player chose a card type from dela (trening is now handled client-side)
+  // Auto-send when player chose a card type from dela
   if (phase === 'waiting_card') {
     const req = session.cardTypeRequest;
     if (req?.cardType && _lastAutoSentCardTs !== req.ts) {
       _lastAutoSentCardTs = req.ts;
       gmSendCard(req.cardType, req.playerKey);
     }
+  }
+
+  // Auto-draw when a player lands on "trening" and requests a shared course/training card
+  const scReq = session.sharedCardRequest;
+  if (scReq?.ts && _lastAutoSentSharedCardTs !== scReq.ts) {
+    _lastAutoSentSharedCardTs = scReq.ts;
+    gmSendSharedCard();
   }
 
   // Shared-card stage management (GM is authoritative for transitions)
@@ -1516,6 +1524,17 @@ async function gmSendCard(cardType, playerKey) {
   const card = drawCard(cardType);
   if (!card && !autoTypes.includes(cardType)) { alert('Колода порожня!'); return; }
   await window._fbSetCard(window._db, _sessionId, playerKey, cardType, card || {});
+}
+
+// A player landed on "trening" and requested a shared course/training card
+// (see index.html's initiateSharedCard / board.js's _fbRequestSharedCard).
+// Drawing happens here, in the GM's own tab, since that's the only place the
+// real cards_data.js catalog is ever loaded.
+async function gmSendSharedCard() {
+  if (!window._db || !_sessionId) return;
+  const drawn = window.drawTreningCard ? window.drawTreningCard() : null;
+  if (!drawn) { alert('Колоди курсів і тренінгів порожні!'); return; }
+  await window._fbSetSharedCard(window._db, _sessionId, drawn.cardType, drawn.card);
 }
 
 // ══════════════════════════════════════════════
