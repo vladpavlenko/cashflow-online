@@ -217,6 +217,7 @@ window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
     courses: [],
     trainings: [],
     education: [],
+    activeStudy: null,
     licenses: [],
     experience: [],
     inventory: [],

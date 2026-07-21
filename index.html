@@ -354,12 +354,6 @@
     .train-total td { border-top: 1px solid var(--bord); }
     .pct-pos { color: var(--green); }
     .pct-zero { color: var(--sub); }
-    .edu-row {
-      display: flex; align-items: center; gap: 10px;
-      font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--bord);
-    }
-    .edu-row:last-child { border-bottom: none; }
-    .edu-row input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; }
     .license-badge {
       display: inline-flex; align-items: center; justify-content: center;
       width: 32px; height: 32px; border-radius: 8px; margin-right: 8px;
@@ -367,6 +361,33 @@
       color: var(--sub); background: var(--bord);
     }
     .license-badge.owned { color: #fff; background: var(--green); }
+    .study-pick-item {
+      padding: 12px 14px; border-radius: 10px; background: var(--elev);
+      border: 1px solid var(--bord); font-size: 13px; cursor: pointer;
+    }
+    .study-pick-item.sel { border-color: var(--gold); background: rgba(245,166,35,0.1); color: var(--gold); font-weight: 700; }
+    .study-active-card {
+      background: rgba(245,166,35,0.07); border: 1px solid rgba(245,166,35,0.2);
+      border-radius: 14px; padding: 12px 14px; margin-bottom: 10px;
+    }
+    .study-active-name { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+    .study-active-actions { display: flex; gap: 8px; }
+    .study-active-actions button {
+      flex: 1; padding: 8px; border-radius: 8px; border: none; cursor: pointer;
+      font-family: var(--body); font-size: 12px; font-weight: 700;
+    }
+    .btn-study-graduate { background: rgba(34,197,94,0.14); color: var(--green); }
+    .btn-study-drop     { background: rgba(239,68,68,0.14); color: var(--red); }
+    .btn-study-start {
+      width: 100%; background: rgba(245,166,35,0.07); border: 1px solid rgba(245,166,35,0.2);
+      border-radius: 14px; padding: 10px; color: var(--gold); font-family: var(--body);
+      font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .edu-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .edu-badge {
+      background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);
+      border-radius: 6px; padding: 4px 9px; font-size: 11px; color: var(--green);
+    }
 
     /* ── Settlement Modal ── */
     #settlement-modal {
@@ -824,6 +845,17 @@
   </div>
 </div>
 
+<!-- ══ START STUDY MODAL ══ -->
+<div class="modal-overlay-bottom hidden" id="m-start-study">
+  <div class="modal-sheet">
+    <div class="modal-sheet-title">🎓 Почати навчання</div>
+    <div style="font-size:12px;color:var(--sub);margin-bottom:14px">Займає 1 з 2 активних слотів доходу, дає стипендію $30/коло.</div>
+    <div id="ss-edu-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px"></div>
+    <button class="btn-debt" id="ss-confirm-btn" onclick="confirmStartStudy()" disabled>Обери освіту</button>
+    <button onclick="document.getElementById('m-start-study').classList.add('hidden')" style="width:100%;padding:12px;background:transparent;border:none;color:rgba(255,255,255,0.25);font-family:var(--body);font-size:12px;cursor:pointer;margin-top:4px">Скасувати</button>
+  </div>
+</div>
+
 <!-- ══ CARD TYPE MODAL ══ -->
 <div id="card-type-modal" class="hidden">
   <div style="text-align:center;margin-bottom:4px;font-size:13px;color:var(--sub)">Ти потрапив на</div>
@@ -1186,11 +1218,12 @@ function cancelCardChoice() {
   _cardModalOpen = false;
 }
 
-// Employee + self jobs share a hard cap of 2 active incomes at a time
-// (matches the real board game / cashflow-ua's activeIncomeCount rule) —
-// drop an existing one via fireIncome() before accepting another.
+// Employee + self jobs + an active study's stipend share a hard cap of 2
+// active incomes at a time (matches cashflow-ua's activeIncomeCount rule) —
+// drop an existing one via fireIncome(), or finish/quit studying, before
+// accepting another.
 function activeIncomeCount(p) {
-  return (p?.incomes || []).filter(i => i.type === 'employee' || i.type === 'self').length;
+  return (p?.incomes || []).filter(i => i.type === 'employee' || i.type === 'self' || i.type === 'stipend').length;
 }
 
 let _decidingCard     = null;
@@ -1226,9 +1259,10 @@ function showCard(card, cardType) {
   setState('card');
 }
 
-// Parses a flat "+300$ (...)" jobs_employee bonus into a number, for the
-// one-time signing bonus credited on accept (isFlatMoneyBonus lives in
-// cards.js, loaded before this script, so it's reachable as a bare global).
+// Parses a flat "+300$ (...)" jobs_employee bonus into a number. It reads as
+// a signing bonus but is actually a permanent addition to the salary — folded
+// straight into basePay (isFlatMoneyBonus lives in cards.js, loaded before
+// this script, so it's reachable as a bare global).
 function _parseFlatBonusAmount(bonus) {
   if (!isFlatMoneyBonus(bonus)) return 0;
   const m = bonus.replace(/,/g, '').match(/(\d+)\s*\$/);
@@ -1240,14 +1274,13 @@ async function applyAcceptedEmployeeJob(card) {
   const p = snap.val() || {};
   if (activeIncomeCount(p) >= 2) { alert('Вже 2 активні роботи — спочатку звільнись з однієї.'); return; }
 
-  const income = { id: 'i' + Date.now(), type: 'employee', name: card.name, basePay: parseFloat(card.pay) || 0 };
+  const basePay = (parseFloat(card.pay) || 0) + _parseFlatBonusAmount(card.bonus);
+  const income  = { id: 'i' + Date.now(), type: 'employee', name: card.name, basePay };
   const incomes = [...(p.incomes || []), income];
-  const bonusAmt = _parseFlatBonusAmount(card.bonus);
-  const newCash = (parseFloat(p.cash) || 0) + bonusAmt;
 
   await window._fbUpdate(
     window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
-    { incomes, cash: newCash }
+    { incomes }
   );
 }
 
@@ -1346,7 +1379,8 @@ function _renderTab2(p) {
       const showMult  = Math.abs(m - 1) > 0.001;
       const showBonus = bonus > 0;
       const typeLabel = inc.type === 'employee' ? 'Найманий' :
-                        inc.type === 'self'     ? 'На себе'  : inc.type;
+                        inc.type === 'self'     ? 'На себе'  :
+                        inc.type === 'stipend'  ? 'Стипендія' : inc.type;
       const fieldStr  = [inc.field, inc.subField].filter(Boolean).join(' · ');
       const canFire   = inc.type === 'employee' || inc.type === 'self';
       return `<div class="income-card">
@@ -1460,19 +1494,96 @@ const EDUCATION_LIST = [
   { id: 'technical_sewing',          label: 'Середня освіта: швея' },
 ];
 
-async function toggleEducation(id, checked) {
-  const owned = new Set(_lastPlayerData?.education || []);
-  if (checked) owned.add(id); else owned.delete(id);
-  await window._fbSet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}/education`), [...owned]);
+// "Навчання" only ever shows: the education(s) the player already has (badges,
+// for comparing against job requirements) and — if currently studying — that
+// one active study, which occupies one of the 2 active-income slots and pays
+// a $30/round stipend via a normal (protected) incomes[] entry. No round
+// countdown: the player themselves decides when to graduate or drop out.
+let _ssPickedEdu = null;
+
+function openStartStudyModal() {
+  if (activeIncomeCount(_lastPlayerData) >= 2) { alert('Вже 2 активні доходи — спочатку звільнись з одного або заверши навчання.'); return; }
+  _ssPickedEdu = null;
+  document.getElementById('ss-edu-list').innerHTML = EDUCATION_LIST.map(e =>
+    `<div class="study-pick-item" id="ss-item-${e.id}" onclick="pickStudyEducation('${e.id}')">${e.label}</div>`
+  ).join('');
+  const btn = document.getElementById('ss-confirm-btn');
+  btn.disabled = true;
+  btn.textContent = 'Обери освіту';
+  document.getElementById('m-start-study').classList.remove('hidden');
+}
+
+function pickStudyEducation(id) {
+  _ssPickedEdu = id;
+  document.querySelectorAll('#ss-edu-list .study-pick-item').forEach(el => el.classList.remove('sel'));
+  document.getElementById('ss-item-' + id)?.classList.add('sel');
+  const btn = document.getElementById('ss-confirm-btn');
+  btn.disabled = false;
+  btn.textContent = 'Почати навчання';
+}
+
+async function confirmStartStudy() {
+  if (!_ssPickedEdu) return;
+  const p = _lastPlayerData || {};
+  if (activeIncomeCount(p) >= 2) { alert('Вже 2 активні доходи — спочатку звільнись з одного або заверши навчання.'); return; }
+  const label = EDUCATION_LIST.find(e => e.id === _ssPickedEdu)?.label || _ssPickedEdu;
+  const stipendId = 'stip_' + Date.now();
+  const stipend = { id: stipendId, type: 'stipend', name: 'Стипендія · ' + label, basePay: 30 };
+  const incomes = [...(p.incomes || []), stipend];
+  const activeStudy = { id: _ssPickedEdu, label, stipendId };
+
+  document.getElementById('m-start-study').classList.add('hidden');
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { incomes, activeStudy }
+  );
+}
+
+async function graduateStudy() {
+  const p = _lastPlayerData || {};
+  const study = p.activeStudy;
+  if (!study) return;
+  const education = [...new Set([...(p.education || []), study.id])];
+  const incomes = (p.incomes || []).filter(i => i.id !== study.stipendId);
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { education, incomes, activeStudy: null }
+  );
+}
+
+async function dropStudy() {
+  const p = _lastPlayerData || {};
+  const study = p.activeStudy;
+  if (!study) return;
+  if (!confirm(`Кинути навчання "${study.label}"? Освіту НЕ буде зараховано.`)) return;
+  const incomes = (p.incomes || []).filter(i => i.id !== study.stipendId);
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { incomes, activeStudy: null }
+  );
 }
 
 function _renderEducation(p) {
   const owned = new Set(p.education || []);
-  document.getElementById('t4-education').innerHTML = EDUCATION_LIST.map(e => `
-    <label class="edu-row">
-      <input type="checkbox" ${owned.has(e.id) ? 'checked' : ''} onchange="toggleEducation('${e.id}', this.checked)">
-      <span>${e.label}</span>
-    </label>`).join('');
+  const badgesHtml = owned.size
+    ? `<div class="edu-badges">${[...owned].map(id => {
+        const label = EDUCATION_LIST.find(e => e.id === id)?.label || id;
+        return `<span class="edu-badge">${label}</span>`;
+      }).join('')}</div>`
+    : '<div style="color:var(--sub);font-size:13px">Освіти ще немає.</div>';
+
+  const study = p.activeStudy;
+  const studyHtml = study
+    ? `<div class="study-active-card">
+         <div class="study-active-name">🎓 ${study.label}</div>
+         <div class="study-active-actions">
+           <button class="btn-study-graduate" onclick="graduateStudy()">✅ Завершити</button>
+           <button class="btn-study-drop"     onclick="dropStudy()">❌ Кинути</button>
+         </div>
+       </div>`
+    : `<button class="btn-study-start" onclick="openStartStudyModal()">🎓 Почати навчання</button>`;
+
+  document.getElementById('t4-education').innerHTML = studyHtml + badgesHtml;
 }
 
 function _renderLicenses(p) {

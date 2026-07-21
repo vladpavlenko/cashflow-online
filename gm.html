@@ -1063,9 +1063,10 @@ function playerCard(key, p) {
         ${trn.map(t => `<div class="detail-row"><span class="lft">${t.name}</span><span class="rgt gold">${(t.category || []).join(', ') || '—'} +${parseFloat(t.multiplier) || 0}%</span></div>`).join('')}
       </div>` : ''}
 
-      ${edu.length ? `<div class="detail-section">
+      ${(edu.length || p.activeStudy) ? `<div class="detail-section">
         <div class="detail-title">Освіта (${edu.length})</div>
-        <div class="detail-row"><span class="lft">${edu.join(', ')}</span></div>
+        ${edu.length ? `<div class="detail-row"><span class="lft">${edu.join(', ')}</span></div>` : ''}
+        ${p.activeStudy ? `<div class="detail-row"><span class="lft">🎓 Навчається: ${p.activeStudy.label}</span></div>` : ''}
       </div>` : ''}
 
       ${lic.length ? `<div class="detail-section">
@@ -1265,6 +1266,12 @@ function onSessionUpdate(session) {
   _currentTurn = session.currentTurn || null;
   const phase   = session.turnPhase || null;
   const players = session.players  || {};
+
+  // Deck remaining/total counters only ever reflected import/clear/reshuffle
+  // before — never an actual draw, since drawCard() depletes localStorage
+  // decks but nothing re-rendered this panel afterwards. Every session tick
+  // (which fires on every draw) is cheap enough to just refresh it here.
+  updateCardsStatus();
 
   document.getElementById('sess-round').textContent = session.round || 1;
 
