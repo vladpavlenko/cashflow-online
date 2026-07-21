@@ -1,5 +1,5 @@
 // CashFlow Online — Service Worker
-const CACHE = 'cashflow-online-v3';
+const CACHE = 'cashflow-online-v4';
 
 const ASSETS = [
   './',
@@ -28,6 +28,15 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  // cards_data.js is GM-edited game content, meant to change often — always go
+  // to the network for it so edits show up on refresh instead of getting stuck
+  // behind the cache-first strategy below (fall back to cache only if offline).
+  const url = new URL(e.request.url);
+  if (url.pathname.endsWith('/cards_data.js')) {
+    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
