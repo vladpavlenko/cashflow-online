@@ -216,6 +216,10 @@ window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
     incomes: [],
     courses: [],
     trainings: [],
+    education: [],
+    licenses: [],
+    experience: [],
+    inventory: [],
     deals: [],
     loans:  { bankRem: 0, microRem: 0 },
     exp:    { housing: 200, food: 120, comm: 10, transport: 30 },
@@ -308,4 +312,32 @@ window._fbClearSharedCard = async (db, sessionId) => {
     sharedCard: null,
     turnPhase:  'done',
   });
+};
+
+// Courses that unlock a driver's license also grant the license id(s) below.
+const LICENSE_GRANTS = { driving: ['A', 'B', 'C', 'D'], driver_B: ['B'] };
+
+// Applies each player's accept/decline vote on a shared course/training card
+// into their persisted profile (courses[]/trainings[], cash, licenses), then
+// clears the shared-card node. Players who declined, or who already own the
+// card, are left untouched.
+window._fbFinalizeSharedCard = async (db, sessionId, cardType, card, decisions, players) => {
+  const arrKey = cardType === 'course' ? 'courses' : 'trainings';
+  for (const [playerKey, decision] of Object.entries(decisions || {})) {
+    if (decision !== 'accept') continue;
+    const p = (players || {})[playerKey];
+    if (!p) continue;
+    const existing = p[arrKey] || [];
+    if (existing.some(x => x.id === card.id)) continue;
+
+    const update = {
+      [arrKey]: [...existing, card],
+      cash: (parseFloat(p.cash) || 0) - (parseFloat(card.cost) || 0),
+    };
+    if (cardType === 'course' && LICENSE_GRANTS[card.id]) {
+      update.licenses = [...new Set([...(p.licenses || []), ...LICENSE_GRANTS[card.id]])];
+    }
+    await window._fbUpdate(window._fbRef(db, `sessions/${sessionId}/players/${playerKey}`), update);
+  }
+  await window._fbClearSharedCard(db, sessionId);
 };

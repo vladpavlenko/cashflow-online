@@ -347,6 +347,19 @@
     .train-total td { border-top: 1px solid var(--bord); }
     .pct-pos { color: var(--green); }
     .pct-zero { color: var(--sub); }
+    .edu-row {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--bord);
+    }
+    .edu-row:last-child { border-bottom: none; }
+    .edu-row input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; }
+    .license-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 8px; margin-right: 8px;
+      font-family: var(--mono); font-weight: 700; font-size: 14px;
+      color: var(--sub); background: var(--bord);
+    }
+    .license-badge.owned { color: #fff; background: var(--green); }
 
     /* ── Settlement Modal ── */
     #settlement-modal {
@@ -641,7 +654,12 @@
 
     <div class="section-card">
       <div class="section-label">Навчання</div>
-      <div style="color:var(--sub);font-size:14px">Розділ у розробці</div>
+      <div id="t4-education"></div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-label">Ліцензії</div>
+      <div id="t4-licenses"></div>
     </div>
 
   </div><!-- /tab-skills -->
@@ -1108,7 +1126,7 @@ function cancelCardChoice() {
 function showCard(card, cardType) {
   const area = document.getElementById('card-area');
   area.innerHTML = `
-    ${window.renderCardHTML(card, cardType)}
+    ${window.renderCardHTML(card, cardType, { state: _lastPlayerData })}
     <div id="card-actions" style="display:flex;gap:10px">
       <button id="btn-accept"  onclick="decide('accept')">✅ Погодитися</button>
       <button id="btn-decline" onclick="decide('decline')">❌ Відхилити</button>
@@ -1314,78 +1332,83 @@ function _renderTab3(p) {
     `<span>Усього витрат (сім'я + кредити):</span><span class="mono red">$${_fmtN(total)} / міс</span>`;
 }
 
+const EDUCATION_LIST = [
+  { id: 'higher_medical',            label: 'Вища медична освіта' },
+  { id: 'higher_medical_incomplete', label: 'Незакінчена вища медична освіта' },
+  { id: 'higher_legal',              label: 'Вища юридична освіта' },
+  { id: 'higher_humanitarian',       label: 'Вища гуманітарна освіта' },
+  { id: 'higher_economic',           label: 'Вища економічна освіта' },
+  { id: 'technical_automotive',      label: 'Середня освіта: автотехнік' },
+  { id: 'technical_cooking',         label: 'Середня освіта: повар' },
+  { id: 'technical_plumbing',        label: 'Середня освіта: сантехнік' },
+  { id: 'technical_carpenter',       label: 'Середня освіта: столяр' },
+  { id: 'technical_electrician',     label: 'Середня освіта: електрик' },
+  { id: 'technical_medical',         label: 'Середня освіта: медсестра' },
+  { id: 'technical_sewing',          label: 'Середня освіта: швея' },
+];
+
+async function toggleEducation(id, checked) {
+  const owned = new Set(_lastPlayerData?.education || []);
+  if (checked) owned.add(id); else owned.delete(id);
+  await window._fbSet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}/education`), [...owned]);
+}
+
+function _renderEducation(p) {
+  const owned = new Set(p.education || []);
+  document.getElementById('t4-education').innerHTML = EDUCATION_LIST.map(e => `
+    <label class="edu-row">
+      <input type="checkbox" ${owned.has(e.id) ? 'checked' : ''} onchange="toggleEducation('${e.id}', this.checked)">
+      <span>${e.label}</span>
+    </label>`).join('');
+}
+
+function _renderLicenses(p) {
+  const owned = new Set(p.licenses || []);
+  document.getElementById('t4-licenses').innerHTML = ['A', 'B', 'C', 'D'].map(l =>
+    `<span class="license-badge${owned.has(l) ? ' owned' : ''}">${l}</span>`
+  ).join('');
+}
+
 function _renderTab4(p) {
   const courses   = p.courses   || [];
   const trainings = p.trainings || [];
 
-  // Courses
   if (courses.length === 0) {
     document.getElementById('t4-courses').innerHTML =
       '<div style="color:var(--sub);font-size:14px">Курсів ще немає.</div>';
   } else {
     document.getElementById('t4-courses').innerHTML =
-      `<div class="skills-header"><span>Назва</span><span>Сфера</span><span>+Дохід</span></div>` +
+      `<div class="skills-header"><span>Назва</span><span>Сфера</span><span>Ефект</span></div>` +
       courses.map(c => {
-        const sphere = [c.field, c.subField].filter(Boolean).join(' · ');
-        const pay    = parseFloat(c.pay) || 0;
+        const bonus = c.effectType === 'bonus'
+          ? (c.effectUnit === 'percent' ? `+${c.effectValue}%` : `+$${c.effectValue}`)
+          : null;
         return `<div class="skills-row">
           <span>${c.name || '—'}</span>
-          <span style="color:var(--sub)">${sphere || '—'}</span>
-          <span class="${pay > 0 ? 'green' : 'pct-zero'}">${pay > 0 ? '+$' + pay : '—'}</span>
+          <span style="color:var(--sub)">${c.field || '—'}</span>
+          <span class="${bonus ? 'green' : 'pct-zero'}">${bonus || 'Відкриває вакансії'}</span>
         </div>`;
       }).join('');
   }
 
-  // Trainings
   if (trainings.length === 0) {
     document.getElementById('t4-trainings').innerHTML =
       '<div style="color:var(--sub);font-size:14px">Тренінгів ще немає.</div>';
-    return;
+  } else {
+    document.getElementById('t4-trainings').innerHTML =
+      `<div class="skills-header"><span>Назва</span><span>Категорія</span><span>Бонус</span></div>` +
+      trainings.map(t => {
+        const pct = parseFloat(t.multiplier) || 0;
+        return `<div class="skills-row">
+          <span>${t.name || '—'}</span>
+          <span style="color:var(--sub)">${(t.category || []).join(', ') || '—'}</span>
+          <span class="${pct > 0 ? 'pct-pos' : 'pct-zero'}">${pct > 0 ? '+' + pct + '%' : '—'}</span>
+        </div>`;
+      }).join('');
   }
 
-  const hasCons = trainings.some(t => (parseFloat(t.mEmpConsultant) || 0) > 0);
-  let sumEmp = 0, sumCons = 0, sumSelf = 0, sumBiz = 0;
-  trainings.forEach(t => {
-    sumEmp  += parseFloat(t.mEmpGeneral)    || 0;
-    sumCons += parseFloat(t.mEmpConsultant) || 0;
-    sumSelf += parseFloat(t.mSelf)          || 0;
-    sumBiz  += parseFloat(t.mBiz)           || 0;
-  });
-
-  const pctCell = (v) => v > 0
-    ? `<td class="pct-pos">+${v}%</td>`
-    : `<td class="pct-zero">—</td>`;
-
-  const rows = trainings.map(t => {
-    const emp  = parseFloat(t.mEmpGeneral)    || 0;
-    const cons = parseFloat(t.mEmpConsultant) || 0;
-    const self = parseFloat(t.mSelf)          || 0;
-    const biz  = parseFloat(t.mBiz)           || 0;
-    return `<tr>
-      <td>${t.name || '—'}</td>
-      ${pctCell(emp)}
-      ${hasCons ? pctCell(cons) : ''}
-      ${pctCell(self)}
-      ${pctCell(biz)}
-    </tr>`;
-  }).join('');
-
-  document.getElementById('t4-trainings').innerHTML = `
-    <div class="train-wrap">
-      <table class="train-table">
-        <thead><tr>
-          <th>Назва</th><th>Найм.</th>${hasCons ? '<th>Конс.</th>' : ''}<th>Себе</th><th>Біз.</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot class="train-total"><tr>
-          <td>Усього</td>
-          ${pctCell(sumEmp)}
-          ${hasCons ? pctCell(sumCons) : ''}
-          ${pctCell(sumSelf)}
-          ${pctCell(sumBiz)}
-        </tr></tfoot>
-      </table>
-    </div>`;
+  _renderEducation(p);
+  _renderLicenses(p);
 }
 
 // ── Settlement ────────────────────────────────────────────────
@@ -1637,7 +1660,7 @@ function handleSharedCardUpdate(sc) {
 
 function renderSharedFront(sc) {
   document.getElementById('shared-card-render').innerHTML =
-    window.renderCardHTML(sc.card, sc.cardType, { hideEffect: true });
+    window.renderCardHTML(sc.card, sc.cardType, { hideEffect: true, state: _lastPlayerData });
   document.getElementById('shared-card-front-ui').classList.remove('hidden');
   document.getElementById('shared-card-back-ui').classList.add('hidden');
 
@@ -1654,7 +1677,7 @@ function renderSharedFront(sc) {
 
 function renderSharedBack(sc) {
   document.getElementById('shared-card-render').innerHTML =
-    window.renderCardHTML(sc.card, sc.cardType, { hideEffect: false });
+    window.renderCardHTML(sc.card, sc.cardType, { hideEffect: false, state: _lastPlayerData });
   document.getElementById('shared-card-front-ui').classList.add('hidden');
   const backUi = document.getElementById('shared-card-back-ui');
   backUi.classList.remove('hidden');

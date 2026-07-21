@@ -1012,11 +1012,13 @@ function playerCard(key, p) {
 
   let detail = '';
   if (exp) {
-    const inc   = p.incomes   || [];
-    const crs   = p.courses   || [];
-    const trn   = p.trainings || [];
-    const ex    = p.exp       || {};
-    const loans = p.loans     || {};
+    const inc   = p.incomes    || [];
+    const crs   = p.courses    || [];
+    const trn   = p.trainings  || [];
+    const edu   = p.education  || [];
+    const lic   = p.licenses   || [];
+    const ex    = p.exp        || {};
+    const loans = p.loans      || {};
     const typeLbl = { employee: L('gmTypeEmployee'), self: L('gmTypeSelf'), stipend: L('gmTypeStipend'), passive: L('gmTypePassive') };
     const housingAmt = parseFloat(ex.housingBase) || 0;
     const kidCost    = parseFloat(ex.kidCost)     || 0;
@@ -1045,12 +1047,27 @@ function playerCard(key, p) {
 
       ${crs.length ? `<div class="detail-section">
         <div class="detail-title">${L('gmDetailCourses', crs.length)}</div>
-        ${crs.map(c => `<div class="detail-row"><span class="lft">${c.name} · ${c.field}</span><span class="rgt gold">+$${(c.pay || 0).toFixed(0)}</span></div>`).join('')}
+        ${crs.map(c => {
+          const eff = c.effectType === 'bonus'
+            ? (c.effectUnit === 'percent' ? `+${c.effectValue}%` : `+$${c.effectValue}`)
+            : '—';
+          return `<div class="detail-row"><span class="lft">${c.name} · ${c.field || ''}</span><span class="rgt gold">${eff}</span></div>`;
+        }).join('')}
       </div>` : ''}
 
       ${trn.length ? `<div class="detail-section">
         <div class="detail-title">${L('gmDetailTrainings', trn.length)}</div>
-        ${trn.map(t => `<div class="detail-row"><span class="lft">${t.name}</span><span class="rgt gold">×${(parseFloat(t.mEmp) || 1).toFixed(2)} / ×${(parseFloat(t.mSelf) || 1).toFixed(2)} / ×${(parseFloat(t.mBiz) || 1).toFixed(2)}</span></div>`).join('')}
+        ${trn.map(t => `<div class="detail-row"><span class="lft">${t.name}</span><span class="rgt gold">${(t.category || []).join(', ') || '—'} +${parseFloat(t.multiplier) || 0}%</span></div>`).join('')}
+      </div>` : ''}
+
+      ${edu.length ? `<div class="detail-section">
+        <div class="detail-title">Освіта (${edu.length})</div>
+        <div class="detail-row"><span class="lft">${edu.join(', ')}</span></div>
+      </div>` : ''}
+
+      ${lic.length ? `<div class="detail-section">
+        <div class="detail-title">Ліцензії</div>
+        <div class="detail-row"><span class="lft">${lic.join(', ')}</span></div>
       </div>` : ''}
     </div>`;
   }
@@ -1203,6 +1220,7 @@ let _sessionId          = null;
 let _currentTurn        = null;
 let _lastAutoSentRollTs = null;
 let _lastAutoSentCardTs = null;
+let _sharedCardFinalizing = false;
 
 const CARD_TYPE_LABELS = {
   emp: 'Робота на дядю', self: 'На себе', random: 'Випадковий заробіток',
@@ -1285,9 +1303,13 @@ function onSessionUpdate(session) {
     const ackedCount   = Object.keys(sc.acks      || {}).length;
     if (sc.stage === 'front' && decidedCount >= playerCount) {
       window._fbSetSharedCardStage(window._db, _sessionId, 'back');
-    } else if (sc.stage === 'back' && ackedCount >= playerCount) {
-      window._fbClearSharedCard(window._db, _sessionId);
+    } else if (sc.stage === 'back' && ackedCount >= playerCount && !_sharedCardFinalizing) {
+      _sharedCardFinalizing = true;
+      window._fbFinalizeSharedCard(window._db, _sessionId, sc.cardType, sc.card, sc.decisions, players)
+        .finally(() => { _sharedCardFinalizing = false; });
     }
+  } else if (!sc) {
+    _sharedCardFinalizing = false;
   }
 }
 
@@ -1376,7 +1398,7 @@ function updateTurnPhaseUI(phase, session, players) {
       const deckInfo = card._deckRemaining !== undefined
         ? `<div style="font-size:11px;color:var(--sub);margin-top:6px">📋 Колода: ${card._deckRemaining} / ${card._deckTotal} залишилось</div>`
         : '';
-      ctCard.innerHTML = window.renderCardHTML(card, session.currentCard.cardType) + deckInfo;
+      ctCard.innerHTML = window.renderCardHTML(card, session.currentCard.cardType, { state: players[session.currentCard.playerKey] }) + deckInfo;
       ctCard.classList.remove('hidden');
     }
     cancelBtn.textContent = '🚫 Скасувати хід';
@@ -1392,7 +1414,7 @@ function updateTurnPhaseUI(phase, session, players) {
       const deckInfo = card._deckRemaining !== undefined
         ? `<div style="font-size:11px;color:var(--sub);margin-top:6px">📋 Колода: ${card._deckRemaining} / ${card._deckTotal} залишилось</div>`
         : '';
-      ctCard.innerHTML = window.renderCardHTML(card, session.currentCard.cardType) + deckInfo;
+      ctCard.innerHTML = window.renderCardHTML(card, session.currentCard.cardType, { state: players[session.currentCard.playerKey] }) + deckInfo;
       ctCard.classList.remove('hidden');
     }
     if (dec) {

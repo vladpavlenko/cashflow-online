@@ -203,6 +203,36 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
+// Turns one req entry (string, or {anyOf:[...]}/{allOf:[...]}) into a display label.
+function reqLabel(r) {
+  if (typeof r === 'string') return r;
+  if (r && r.anyOf) return '(' + r.anyOf.map(reqLabel).join(' або ') + ')';
+  if (r && r.allOf) return '(' + r.allOf.map(reqLabel).join(' і ') + ')';
+  return '';
+}
+
+// card.bonus on jobs_employee cards is dual-purpose text from the source data:
+// a flat "$" addition to pay ("+300$ (за слитое дизельное топливо)") that isn't
+// mentioned anywhere else, OR a conditional "%" pay multiplier ("+50% if has
+// course: X") whose condition is already spelled out in card.text. Only the
+// flat-dollar form needs its own display line; the percent form would duplicate
+// what's already in the main text.
+function isFlatMoneyBonus(bonus) {
+  return typeof bonus === 'string' && bonus.includes('$') && !bonus.includes('%');
+}
+
+// Renders the "Вимоги:" line, prefixed with ✅/⚠️ when opts.state is given
+// (uses engine.js's meetsReq — informational only, doesn't block accept/decline).
+function reqHtmlFor(card, opts, wrap) {
+  const req = card.req;
+  const list = Array.isArray(req) ? req : (req ? [req] : []);
+  if (!list.length) return '';
+  const prefix = opts.state && typeof meetsReq === 'function'
+    ? (meetsReq(opts.state, list) ? '✅ ' : '⚠️ ')
+    : '';
+  return wrap(prefix + escapeHtml(list.map(reqLabel).join(', ')));
+}
+
 // Renders a card using the new layout: TEXT (main) + side image + structured fields.
 // opts.hideEffect = true  → hide card.effect (training front side before vote reveal)
 window.renderCardHTML = function(card, cardType, opts) {
@@ -226,13 +256,12 @@ window.renderCardHTML = function(card, cardType, opts) {
   // card.text is primary; fall back to card.effect when not hidden
   const mainText = card.text || (opts.hideEffect ? '' : (card.effect || ''));
 
-  const hasReq   = card.req && card.req.length > 0;
   const hasPay   = card.pay > 0;
-  const hasBonus = card.bonus && card.bonus.length > 0;
+  const hasBonus = isFlatMoneyBonus(card.bonus);
   const hasImage = card.image && card.image.length > 0;
 
   // Structured fields
-  const reqHtml   = hasReq   ? `<div class="card-field"><span class="cf-label">Вимоги:</span><span class="cf-value">${escapeHtml(card.req.join(', '))}</span></div>` : '';
+  const reqHtml   = reqHtmlFor(card, opts, v => `<div class="card-field"><span class="cf-label">Вимоги:</span><span class="cf-value">${v}</span></div>`);
   const payHtml   = hasPay   ? `<div class="card-field"><span class="cf-label">Зарплата:</span><span class="cf-value cf-money">$${card.pay.toLocaleString()}</span></div>` : '';
   const bonusHtml = hasBonus ? `<div class="card-field"><span class="cf-label">Бонус:</span><span class="cf-value cf-money">${escapeHtml(card.bonus)}</span></div>` : '';
 
@@ -289,7 +318,7 @@ window.renderPhysicalCardHTML = function(card, cardType, opts) {
 
   let rows = '';
   if (card.pay    !== undefined) rows += r('Дохід:', `$${card.pay}/міс`);
-  if (card.bonus  !== undefined) rows += r('Бонус:', card.bonus);
+  if (isFlatMoneyBonus(card.bonus)) rows += r('Бонус:', card.bonus);
   if (card.amount !== undefined) rows += r('Виплата:', `+$${card.amount}`);
   if (card.cost   !== undefined) rows += r('Вартість:', `$${card.cost}`);
   if (card.invest !== undefined) rows += r('Вкладення:', `$${card.invest}`);
@@ -300,9 +329,7 @@ window.renderPhysicalCardHTML = function(card, cardType, opts) {
   if (cardType === 'self' && card.industry)       rows += r('Сфера:', card.industry);
   if (cardType === 'self' && card.additionalCost) rows += r('Докупити:', card.additionalCost);
 
-  const reqs = card.req || [];
-  const reqHtml = reqs.length
-    ? `<div class="pcard-req">⚠ Вимоги: ${reqs.join(', ')}</div>` : '';
+  const reqHtml = reqHtmlFor(card, opts, v => `<div class="pcard-req">Вимоги: ${v}</div>`);
 
   let effectHtml = '';
   if (opts.hideEffect) {

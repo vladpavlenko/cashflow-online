@@ -1,32 +1,64 @@
 // CashFlow Online — engine.js
 // Pure calculation functions. No DOM, no global S.
 
-function addPay(state, inc) {
-  if (!inc.field) return 0;
-  return (state.courses || []).filter(c => {
-    if (c.field.trim().toLowerCase() !== inc.field.trim().toLowerCase()) return false;
-    const cSub = (c.subField || '').trim().toLowerCase();
-    const iSub = (inc.subField || '').trim().toLowerCase();
-    if (cSub && iSub && cSub === iSub) return false;
-    return true;
-  }).reduce((s, c) => s + (parseFloat(c.pay) || 0), 0);
+function fieldMatches(a, b) {
+  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
+// Courses with effectType 'bonus' + effectUnit 'dollar' add a flat amount to
+// matching income; 'unlock'-type courses contribute no money (they only gate meetsReq).
+function addPay(state, inc) {
+  if (!inc.field) return 0;
+  return (state.courses || []).filter(c =>
+    c.effectType === 'bonus' && c.effectUnit === 'dollar' && fieldMatches(c.field, inc.field)
+  ).reduce((s, c) => s + (parseFloat(c.effectValue) || 0), 0);
+}
+
+// Trainings with a 'category' array contribute their 'multiplier' percent to
+// any income whose inc.type is listed in that category. Courses with
+// effectType 'bonus' + effectUnit 'percent' add their percent the same way,
+// gated on the course's field matching the income's field.
 function mult(state, inc) {
-  const bonusSum = (state.trainings || []).reduce((sum, t) => {
-    let pct = 0;
-    if (inc.type === 'employee') {
-      const field = (inc.field || '').toLowerCase().trim();
-      const isConsultant = field === 'консультант' || field === 'consultant';
-      pct = isConsultant ? (parseFloat(t.mEmpConsultant) || 0) : (parseFloat(t.mEmpGeneral) || 0);
-    } else if (inc.type === 'self') {
-      pct = parseFloat(t.mSelf) || 0;
-    } else if (inc.type === 'passive') {
-      pct = parseFloat(t.mBiz) || 0;
-    }
-    return sum + pct;
+  const trainingPct = (state.trainings || []).reduce((sum, t) => {
+    const cats = t.category || [];
+    return sum + (cats.includes(inc.type) ? (parseFloat(t.multiplier) || 0) : 0);
   }, 0);
-  return 1 + bonusSum / 100;
+  const coursePct = (state.courses || []).reduce((sum, c) => {
+    if (c.effectType === 'bonus' && c.effectUnit === 'percent' && fieldMatches(c.field, inc.field)) {
+      return sum + (parseFloat(c.effectValue) || 0);
+    }
+    return sum;
+  }, 0);
+  return 1 + (trainingPct + coursePct) / 100;
+}
+
+// Parses free-text req strings from cards_data.js ("course: id", "education: id",
+// "license: id", "training: id", "experience: text", "personal: has_children"/
+// "has_partner") plus {allOf:[...]}/{anyOf:[...]} grouping and top-level arrays
+// (implicit AND). See player_progression_schema_v2.md for the id enumerations.
+function meetsReq(state, req) {
+  if (req == null) return true;
+  if (Array.isArray(req)) return req.every(r => meetsReq(state, r));
+  if (typeof req === 'object') {
+    if (req.allOf) return req.allOf.every(r => meetsReq(state, r));
+    if (req.anyOf) return req.anyOf.some(r => meetsReq(state, r));
+    return true;
+  }
+  const i = req.indexOf(':');
+  const kind  = (i === -1 ? req : req.slice(0, i)).trim().toLowerCase();
+  const value = (i === -1 ? '' : req.slice(i + 1)).trim();
+  switch (kind) {
+    case 'course':    return (state.courses    || []).some(c => c.id === value);
+    case 'training':  return (state.trainings  || []).some(t => t.id === value);
+    case 'education':  return (state.education  || []).includes(value);
+    case 'license':   return (state.licenses   || []).includes(value);
+    case 'experience': return (state.experience || []).some(e => e.toLowerCase() === value.toLowerCase());
+    case 'personal':
+      if (value === 'has_children') return (state.kidsCount || 0) > 0;
+      if (value === 'has_partner')  return !!state.hasPartner;
+      return false;
+    default: return false;
+  }
 }
 
 function fi(state, inc) {
@@ -106,4 +138,4 @@ const FIELDS = [
   { id: 'custom',      label: 'Довільне...',   sub: { label: 'Назва',     placeholder: '' } },
 ];
 
-if (typeof module !== 'undefined') module.exports = { fi, addPay, mult, totalInc, totalExp, bal, fmt, fmtS, depositIncome, totalPassiveInc, hExp, UNI_SPECS, COL_SPECS, FIELDS };
+if (typeof module !== 'undefined') module.exports = { fi, addPay, mult, meetsReq, totalInc, totalExp, bal, fmt, fmtS, depositIncome, totalPassiveInc, hExp, UNI_SPECS, COL_SPECS, FIELDS };
