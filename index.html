@@ -312,6 +312,13 @@
     }
     .loan-row:last-child { border-bottom: none; }
     .loan-row .mono { font-family: var(--mono); }
+    .loan-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .loan-actions button {
+      flex: 1; padding: 9px; border-radius: 10px; border: none; cursor: pointer;
+      font-family: var(--body); font-size: 12px; font-weight: 700;
+    }
+    .btn-loan-borrow { background: rgba(96,165,250,0.14); color: var(--blue); }
+    .btn-loan-repay  { background: rgba(34,197,94,0.14);  color: var(--green); }
     .red  { color: var(--red); }
     .green { color: var(--green); }
 
@@ -407,6 +414,14 @@
       transition: transform 0.1s; margin-bottom: 8px; display: block;
     }
     .btn-debt:active { transform: scale(0.98); }
+    .f-field { margin-bottom: 10px; }
+    .f-label { display: block; font-size: 12px; color: var(--sub); margin-bottom: 6px; }
+    .f-input {
+      width: 100%; box-sizing: border-box; background: var(--elev);
+      border: 1px solid var(--bord); border-radius: 10px; padding: 12px 14px;
+      color: var(--text); font-family: var(--mono); font-size: 16px;
+    }
+    .f-input:focus { outline: none; border-color: var(--gold); }
 
     /* ── Card Type Modal ── */
     #card-type-modal {
@@ -758,6 +773,54 @@
     </button>
     <div id="debt-no-credit" style="display:none;color:var(--red);font-size:14px;font-weight:600;text-align:center;padding:8px 0">❌ Кредитні ліміти вичерпано</div>
     <button onclick="cancelDebt()" style="width:100%;padding:12px;background:transparent;border:none;color:rgba(255,255,255,0.25);font-family:var(--body);font-size:12px;cursor:pointer;margin-top:4px">Я передумав — скасувати</button>
+  </div>
+</div>
+
+<!-- ══ BORROW MODAL ══ -->
+<div class="modal-overlay-bottom hidden" id="m-borrow">
+  <div class="modal-sheet">
+    <div class="modal-sheet-title" id="borrow-title">Взяти позику</div>
+    <div style="font-size:13px;color:var(--sub);margin-bottom:14px" id="borrow-info"></div>
+    <div class="f-field">
+      <label class="f-label">Сума</label>
+      <input type="number" class="f-input" id="borrow-amount" placeholder="0" min="0"
+             oninput="onBorrowInput(this.value)">
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin:10px 0 18px">
+      <span style="color:var(--sub)">Відсоток / раунд</span>
+      <span style="font-family:var(--mono);font-weight:700;color:var(--red)" id="borrow-interest-preview">$0</span>
+    </div>
+    <button class="btn-debt" id="borrow-confirm-btn" onclick="confirmBorrow()">Взяти позику</button>
+    <button onclick="document.getElementById('m-borrow').classList.add('hidden')" style="width:100%;padding:12px;background:transparent;border:none;color:rgba(255,255,255,0.25);font-family:var(--body);font-size:12px;cursor:pointer;margin-top:4px">Скасувати</button>
+  </div>
+</div>
+
+<!-- ══ REPAY MODAL ══ -->
+<div class="modal-overlay-bottom hidden" id="m-repay">
+  <div class="modal-sheet">
+    <div class="modal-sheet-title" id="repay-title">Погасити борг</div>
+    <div style="background:var(--elev);border-radius:12px;padding:13px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px">
+        <span style="color:var(--sub)">Поточний борг</span>
+        <span style="font-family:var(--mono);font-weight:700;color:var(--red)" id="repay-current-debt">$0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px">
+        <span style="color:var(--sub)">Твоя готівка</span>
+        <span style="font-family:var(--mono);color:var(--gold)" id="repay-cash-available">$0</span>
+      </div>
+    </div>
+    <div class="f-field">
+      <label class="f-label">Сума погашення</label>
+      <input type="number" class="f-input" id="repay-amount" placeholder="0" min="0"
+             oninput="onRepayInput(this.value)">
+    </div>
+    <div id="repay-error" style="display:none;color:var(--red);font-size:12px;margin:6px 0 0"></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin:10px 0 18px">
+      <span style="color:var(--sub)">Борг після погашення</span>
+      <span style="font-family:var(--mono);font-weight:700" id="repay-debt-after">$0</span>
+    </div>
+    <button class="btn-debt" id="repay-confirm-btn" onclick="confirmRepay()">Погасити</button>
+    <button onclick="document.getElementById('m-repay').classList.add('hidden')" style="width:100%;padding:12px;background:transparent;border:none;color:rgba(255,255,255,0.25);font-family:var(--body);font-size:12px;cursor:pointer;margin-top:4px">Скасувати</button>
   </div>
 </div>
 
@@ -1123,8 +1186,21 @@ function cancelCardChoice() {
   _cardModalOpen = false;
 }
 
+// Employee + self jobs share a hard cap of 2 active incomes at a time
+// (matches the real board game / cashflow-ua's activeIncomeCount rule) —
+// drop an existing one via fireIncome() before accepting another.
+function activeIncomeCount(p) {
+  return (p?.incomes || []).filter(i => i.type === 'employee' || i.type === 'self').length;
+}
+
+let _decidingCard     = null;
+let _decidingCardType = null;
+
 // ── Show card ─────────────────────────────────────────────────
 function showCard(card, cardType) {
+  _decidingCard     = card;
+  _decidingCardType = cardType;
+
   const area = document.getElementById('card-area');
   area.innerHTML = `
     ${window.renderCardHTML(card, cardType, { state: _lastPlayerData })}
@@ -1137,17 +1213,49 @@ function showCard(card, cardType) {
     </div>`;
 
   const autoTypes = ['uvolen','lyubov','rebenok','poluchka','expense'];
-  if (autoTypes.includes(cardType)) {
+  const incomeCapped = cardType === 'emp' && activeIncomeCount(_lastPlayerData) >= 2;
+
+  if (autoTypes.includes(cardType) || incomeCapped) {
     document.getElementById('card-actions').classList.add('hidden');
     document.getElementById('card-decided').classList.remove('hidden');
-    document.getElementById('decided-text').textContent = 'Подія застосована автоматично';
+    document.getElementById('decided-text').textContent = incomeCapped
+      ? '❌ Вже 2 активні роботи — спочатку звільнись з однієї'
+      : 'Подія застосована автоматично';
   }
 
   setState('card');
 }
 
+// Parses a flat "+300$ (...)" jobs_employee bonus into a number, for the
+// one-time signing bonus credited on accept (isFlatMoneyBonus lives in
+// cards.js, loaded before this script, so it's reachable as a bare global).
+function _parseFlatBonusAmount(bonus) {
+  if (!isFlatMoneyBonus(bonus)) return 0;
+  const m = bonus.replace(/,/g, '').match(/(\d+)\s*\$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+async function applyAcceptedEmployeeJob(card) {
+  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+  const p = snap.val() || {};
+  if (activeIncomeCount(p) >= 2) { alert('Вже 2 активні роботи — спочатку звільнись з однієї.'); return; }
+
+  const income = { id: 'i' + Date.now(), type: 'employee', name: card.name, basePay: parseFloat(card.pay) || 0 };
+  const incomes = [...(p.incomes || []), income];
+  const bonusAmt = _parseFlatBonusAmount(card.bonus);
+  const newCash = (parseFloat(p.cash) || 0) + bonusAmt;
+
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { incomes, cash: newCash }
+  );
+}
+
 async function decide(decision) {
   _decided = true;
+  if (decision === 'accept' && _decidingCardType === 'emp' && _decidingCard) {
+    await applyAcceptedEmployeeJob(_decidingCard);
+  }
   await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, decision);
   document.getElementById('card-actions').classList.add('hidden');
   document.getElementById('card-decided').classList.remove('hidden');
@@ -1313,7 +1421,7 @@ function _renderTab3(p) {
     `<div class="exp-divider"></div>
      <div class="exp-row exp-row-total"><span>Витрати сім'ї</span><span class="mono red">$${_fmtN(familyTotal)}</span></div>`;
 
-  const loanBlock = (icon, label, limit, rem, rate) => {
+  const loanBlock = (source, icon, label, limit, rem, rate) => {
     const payment = Math.round(rem * rate / 100);
     const avail   = limit - rem;
     return `<div class="loan-block">
@@ -1321,12 +1429,16 @@ function _renderTab3(p) {
       <div class="loan-row"><span>Залишок боргу</span><span class="mono ${rem > 0 ? 'red' : ''}">$${_fmtN(rem)}</span></div>
       <div class="loan-row"><span>Доступний ліміт</span><span class="mono">$${_fmtN(avail)}</span></div>
       <div class="loan-row"><span>Виплата / раунд (${rate}%)</span><span class="mono ${payment > 0 ? 'red' : ''}">$${_fmtN(payment)}</span></div>
+      <div class="loan-actions">
+        <button class="btn-loan-borrow" onclick="openBorrowModal('${source}')">+ Взяти позику</button>
+        <button class="btn-loan-repay"  onclick="openRepayModal('${source}')" ${rem > 0 ? '' : 'disabled style="opacity:0.4;cursor:default"'}>↓ Погасити</button>
+      </div>
     </div>`;
   };
 
   document.getElementById('t3-loans-list').innerHTML =
-    loanBlock('🏦', 'Банк',        3000,  bank,  3) +
-    loanBlock('💸', 'Мікрокредит', 30000, micro, 30);
+    loanBlock('bank',  '🏦', 'Банк',        3000,  bank,  3) +
+    loanBlock('micro', '💸', 'Мікрокредит', 30000, micro, 30);
 
   const total = totalExp(p);
   document.getElementById('t3-total-row').innerHTML =
@@ -1624,6 +1736,122 @@ async function afterDebtResolved() {
     _settlementPending = false;
     _proceedAfterSettlement();
   }
+}
+
+// ── Voluntary borrow / repay (unlike m-debt, not tied to any shortfall) ──
+const LOAN_LIMITS = { bank: 3000, micro: 30000 };
+const LOAN_RATES  = { bank: 3,    micro: 30 };
+
+let _borrowSource = null;
+
+function openBorrowModal(source) {
+  _borrowSource = source;
+  const p     = _lastPlayerData || {};
+  const loans = p.loans || {};
+  const limit = LOAN_LIMITS[source];
+  const rate  = LOAN_RATES[source];
+  const rem   = parseFloat(source === 'bank' ? loans.bankRem : loans.microRem) || 0;
+  const avail = Math.max(0, limit - rem);
+  const name  = source === 'bank' ? '🏦 Банк' : '💸 Мікрокредит';
+
+  document.getElementById('borrow-title').textContent = `Взяти позику — ${name}`;
+  document.getElementById('borrow-info').textContent   = `Доступно: $${_fmtN(avail)} · ставка ${rate}% / раунд`;
+  document.getElementById('borrow-amount').value = '';
+  document.getElementById('borrow-amount').max   = avail;
+  document.getElementById('borrow-interest-preview').textContent = '$0';
+
+  const btn = document.getElementById('borrow-confirm-btn');
+  if (avail <= 0) { btn.disabled = true;  btn.textContent = 'Ліміт вичерпано'; }
+  else            { btn.disabled = false; btn.textContent = 'Взяти позику'; }
+
+  document.getElementById('m-borrow').classList.remove('hidden');
+}
+
+function onBorrowInput(val) {
+  const rate   = LOAN_RATES[_borrowSource];
+  const amount = parseFloat(val) || 0;
+  document.getElementById('borrow-interest-preview').textContent = '$' + Math.round(amount * rate / 100) + ' / раунд';
+}
+
+async function confirmBorrow() {
+  const p     = _lastPlayerData || {};
+  const loans = p.loans || {};
+  const limit = LOAN_LIMITS[_borrowSource];
+  const rem   = parseFloat(_borrowSource === 'bank' ? loans.bankRem : loans.microRem) || 0;
+  const avail = Math.max(0, limit - rem);
+  const amount = Math.min(parseFloat(document.getElementById('borrow-amount').value) || 0, avail);
+  if (amount <= 0) { alert('Введи суму'); return; }
+
+  const newCash = (parseFloat(p.cash) || 0) + amount;
+  const newLoans = { ...loans };
+  if (_borrowSource === 'bank') newLoans.bankRem  = rem + amount;
+  else                          newLoans.microRem = rem + amount;
+
+  document.getElementById('m-borrow').classList.add('hidden');
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { cash: newCash, loans: newLoans }
+  );
+}
+
+let _repaySource = null;
+
+function openRepayModal(source) {
+  _repaySource = source;
+  const p     = _lastPlayerData || {};
+  const loans = p.loans || {};
+  const cash  = parseFloat(p.cash) || 0;
+  const debt  = parseFloat(source === 'bank' ? loans.bankRem : loans.microRem) || 0;
+  const name  = source === 'bank' ? '🏦 Банк' : '💸 Мікрокредит';
+
+  document.getElementById('repay-title').textContent = `Погасити — ${name}`;
+  document.getElementById('repay-current-debt').textContent   = '$' + _fmtN(debt);
+  document.getElementById('repay-cash-available').textContent = '$' + _fmtN(cash);
+  document.getElementById('repay-error').style.display = 'none';
+
+  const prefill = (cash > 0 && debt > 0) ? Math.round(Math.min(cash, debt)) : '';
+  document.getElementById('repay-amount').value = prefill;
+
+  const btn = document.getElementById('repay-confirm-btn');
+  if (debt <= 0) { btn.disabled = true;  btn.textContent = 'Боргу немає'; }
+  else           { btn.disabled = false; btn.textContent = 'Погасити'; }
+
+  document.getElementById('m-repay').classList.remove('hidden');
+  onRepayInput(prefill);
+}
+
+function onRepayInput(val) {
+  const p     = _lastPlayerData || {};
+  const loans = p.loans || {};
+  const debt  = parseFloat(_repaySource === 'bank' ? loans.bankRem : loans.microRem) || 0;
+  const amount = parseFloat(val) || 0;
+  const debtAfter = Math.max(0, debt - Math.min(amount, debt));
+  document.getElementById('repay-debt-after').textContent = '$' + _fmtN(debtAfter);
+  document.getElementById('repay-error').style.display = 'none';
+}
+
+async function confirmRepay() {
+  const p       = _lastPlayerData || {};
+  const loans   = p.loans || {};
+  const entered = Math.round(parseFloat(document.getElementById('repay-amount').value) || 0);
+  const cash    = Math.round(parseFloat(p.cash) || 0);
+  const debt    = Math.round(parseFloat(_repaySource === 'bank' ? loans.bankRem : loans.microRem) || 0);
+  const errEl   = document.getElementById('repay-error');
+
+  if (entered > cash) { errEl.textContent = `Недостатньо готівки (маєш $${_fmtN(cash)})`; errEl.style.display = 'block'; return; }
+  if (entered <= 0)   { errEl.textContent = 'Введи суму більше нуля'; errEl.style.display = 'block'; return; }
+
+  const actualRepay = Math.min(entered, debt);
+  const newCash  = cash - actualRepay;
+  const newLoans = { ...loans };
+  if (_repaySource === 'bank') newLoans.bankRem  = Math.max(0, debt - actualRepay);
+  else                         newLoans.microRem = Math.max(0, debt - actualRepay);
+
+  document.getElementById('m-repay').classList.add('hidden');
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { cash: newCash, loans: newLoans }
+  );
 }
 
 if ('serviceWorker' in navigator) {
