@@ -712,7 +712,7 @@
       <input type="file" id="cards-batch-input" accept=".txt" multiple style="display:none"
              onchange="handleBatchImport(event)">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="document.getElementById('cards-batch-input').click()"
+        <button onclick="handleImportButtonClick()"
                 style="background:linear-gradient(180deg,#2d4a8a,#1e3570);border:none;border-radius:10px;padding:9px 16px;color:#fff;font-family:var(--body);font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(30,53,112,0.4)">
           📁 Імпортувати всі картки
         </button>
@@ -1525,6 +1525,42 @@ const VALID_TYPES = [
   'jobs_employee','jobs_self','random_income','startups',
   'deals','courses','trainings','expenses'
 ];
+
+// Called by the "Імпортувати всі картки" button. If cards_data.js is present
+// at the project root (same origin — the file the app already auto-loads via
+// <script src="cards_data.js">), offer to (re-)load it fresh instead of making
+// the GM hunt for individual .txt deck files. Falls back to the manual .txt
+// file picker if the file isn't reachable (e.g. it doesn't exist locally yet).
+async function handleImportButtonClick() {
+  const handled = await tryAutoImportCardsData();
+  if (!handled) document.getElementById('cards-batch-input').click();
+}
+
+async function tryAutoImportCardsData() {
+  let res;
+  try {
+    res = await fetch('cards_data.js?t=' + Date.now(), { cache: 'no-store' });
+  } catch (e) {
+    return false;
+  }
+  if (!res.ok) return false;
+
+  const text = await res.text();
+  if (!confirm('Знайдено cards_data.js у корені проекту. Завантажити картки з нього?')) return true;
+
+  try {
+    new Function(text)();
+  } catch (e) {
+    alert('cards_data.js знайдено, але його не вдалося прочитати:\n' + e.message);
+    return true;
+  }
+
+  VALID_TYPES.forEach(t => localStorage.removeItem(`cf_deck_${t}`));
+  updateCardsStatus();
+  const counts = VALID_TYPES.map(t => `${t}: ${window.LOCAL_CARDS?.[t]?.length || 0}`).join('\n');
+  alert(`Картки завантажено з cards_data.js:\n${counts}`);
+  return true;
+}
 
 async function handleBatchImport(event) {
   const files = Array.from(event.target.files);
