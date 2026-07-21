@@ -279,32 +279,38 @@ window.renderCardHTML = function(card, cardType, opts) {
   const icon  = TYPE_ICONS[cardType]  || '';
   const label = TYPE_LABELS[cardType] || cardType;
 
-  // card.text is primary; fall back to card.effect when not hidden
-  const mainText = card.text || (opts.hideEffect ? '' : (card.effect || ''));
+  // opts.hideEffect = true → front side, before the buy decision: show only
+  // name + cost (card.text/card.effect and every other detail stay hidden
+  // until the back-side reveal, matching a real face-down course/training card).
+  const mainText = opts.hideEffect ? '' : (card.text || card.effect || '');
 
-  const hasPay   = card.pay > 0;
-  const hasBonus = isFlatMoneyBonus(card.bonus);
-  const hasImage = card.image && card.image.length > 0;
+  const hasPay   = !opts.hideEffect && card.pay > 0;
+  const hasBonus = !opts.hideEffect && isFlatMoneyBonus(card.bonus);
 
   // Structured fields
-  const reqHtml   = reqHtmlFor(card, opts, v => `<div class="card-field"><span class="cf-label">Вимоги:</span><span class="cf-value">${v}</span></div>`);
+  const reqHtml   = opts.hideEffect ? '' : reqHtmlFor(card, opts, v => `<div class="card-field"><span class="cf-label">Вимоги:</span><span class="cf-value">${v}</span></div>`);
   const payHtml   = hasPay   ? `<div class="card-field"><span class="cf-label">Зарплата:</span><span class="cf-value cf-money">$${card.pay.toLocaleString()}</span></div>` : '';
   const bonusHtml = hasBonus ? `<div class="card-field"><span class="cf-label">Бонус:</span><span class="cf-value cf-money">${escapeHtml(card.bonus)}</span></div>` : '';
 
-  // Extra fields for non-employee card types (stubs and future .txt types)
+  // Extra fields for non-employee card types (stubs and future .txt types).
+  // Cost is shown even on the hidden front — the price is known before buying.
   const extra = [];
-  if (card.amount !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Виплата:</span><span class="cf-value cf-money">+$${card.amount}</span></div>`);
-  if (card.cost   !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вартість:</span><span class="cf-value cf-money">$${card.cost}</span></div>`);
-  if (card.invest !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вкладення:</span><span class="cf-value cf-money">$${card.invest}</span></div>`);
-  if (card.pct && card.invest)   extra.push(`<div class="card-field"><span class="cf-label">Пасив. дохід:</span><span class="cf-value cf-money">$${Math.round(card.invest * card.pct)}/міс</span></div>`);
-  if (card.mult && card.invest)  extra.push(`<div class="card-field"><span class="cf-label">Прибуток:</span><span class="cf-value cf-money">+$${Math.round(card.invest * card.mult)}</span></div>`);
-  if (card.term !== undefined)   extra.push(`<div class="card-field"><span class="cf-label">Термін:</span><span class="cf-value">${card.term} міс.</span></div>`);
-  if (card.field !== undefined)  extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.field)}</span></div>`);
-  if (cardType === 'self' && card.industry)       extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.industry)}</span></div>`);
-  if (cardType === 'self' && card.additionalCost) extra.push(`<div class="card-field"><span class="cf-label">Докупити:</span><span class="cf-value cf-money">${escapeHtml(card.additionalCost)}</span></div>`);
+  if (card.cost !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вартість:</span><span class="cf-value cf-money">$${card.cost}</span></div>`);
+  if (!opts.hideEffect) {
+    if (card.amount !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Виплата:</span><span class="cf-value cf-money">+$${card.amount}</span></div>`);
+    if (card.invest !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вкладення:</span><span class="cf-value cf-money">$${card.invest}</span></div>`);
+    if (card.pct && card.invest)   extra.push(`<div class="card-field"><span class="cf-label">Пасив. дохід:</span><span class="cf-value cf-money">$${Math.round(card.invest * card.pct)}/міс</span></div>`);
+    if (card.mult && card.invest)  extra.push(`<div class="card-field"><span class="cf-label">Прибуток:</span><span class="cf-value cf-money">+$${Math.round(card.invest * card.mult)}</span></div>`);
+    if (card.term !== undefined)   extra.push(`<div class="card-field"><span class="cf-label">Термін:</span><span class="cf-value">${card.term} міс.</span></div>`);
+    if (card.field !== undefined)  extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.field)}</span></div>`);
+    if (cardType === 'self' && card.industry)       extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.industry)}</span></div>`);
+    if (cardType === 'self' && card.additionalCost) extra.push(`<div class="card-field"><span class="cf-label">Докупити:</span><span class="cf-value cf-money">${escapeHtml(card.additionalCost)}</span></div>`);
+  }
+
+  const hasImage = !opts.hideEffect && card.image && card.image.length > 0;
 
   const effectHtml = opts.hideEffect
-    ? `<div class="card-field"><span class="cf-label">Ефект:</span><span class="cf-value" style="color:#888;font-style:italic">🔒 Невідомий...</span></div>`
+    ? `<div class="card-field"><span class="cf-label">Ефект:</span><span class="cf-value" style="color:#888;font-style:italic">🔒 Дізнаєшся після оплати...</span></div>`
     : '';
 
   const allFields = reqHtml + payHtml + bonusHtml + extra.join('') + effectHtml;
@@ -312,6 +318,7 @@ window.renderCardHTML = function(card, cardType, opts) {
     ? `<div class="card-fields">${allFields}</div>`
     : '';
 
+  const nameHtml  = card.name ? `<div class="card-name">${escapeHtml(card.name)}</div>` : '';
   const textHtml  = mainText ? `<div class="card-fulltext">${escapeHtml(mainText)}</div>` : '';
   const imageHtml = hasImage
     ? `<div class="card-image-col"><img src="assets/cards_images/${card.image}" alt="" onerror="this.parentElement.style.display='none'"></div>`
@@ -319,6 +326,7 @@ window.renderCardHTML = function(card, cardType, opts) {
 
   return `<div class="card-render">
     <div class="card-header">${icon} ${label}</div>
+    ${nameHtml}
     <div class="card-content-row">
       <div class="card-text-col">${textHtml}${fieldsHtml}</div>
       ${imageHtml}
