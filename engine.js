@@ -85,17 +85,22 @@ function hExp(state) {
   return parseFloat(ex.housingBase) || DEFAULT_EXP.housingBase;
 }
 
-function totalExp(state) {
+function expBreakdown(state) {
   const ex    = state.exp ? { ...DEFAULT_EXP, ...state.exp } : DEFAULT_EXP;
   const loans = state.loans || {};
-  return (parseFloat(ex.housingBase) || DEFAULT_EXP.housingBase)
+  const base = (parseFloat(ex.housingBase) || DEFAULT_EXP.housingBase)
     + (parseFloat(ex.food)      || DEFAULT_EXP.food)
     + (parseFloat(ex.comm)      || DEFAULT_EXP.comm)
     + (parseFloat(ex.transport) || DEFAULT_EXP.transport)
     + (ex.hasWife ? (parseFloat(ex.wifeAmt) || 0) : 0)
-    + (ex.kids || 0) * (parseFloat(ex.kidCost) || 0)
-    + Math.round((parseFloat(loans.bankRem)  || 0) * 0.03)
-    + Math.round((parseFloat(loans.microRem) || 0) * 0.30);
+    + (ex.kids || 0) * (parseFloat(ex.kidCost) || 0);
+  const bankDue  = Math.round((parseFloat(loans.bankRem)  || 0) * 0.03);
+  const microDue = Math.round((parseFloat(loans.microRem) || 0) * 0.30);
+  return { base, bankDue, microDue, total: base + bankDue + microDue };
+}
+
+function totalExp(state) {
+  return expBreakdown(state).total;
 }
 
 function bal(state) {
@@ -138,4 +143,4 @@ const FIELDS = [
   { id: 'custom',      label: 'Довільне...',   sub: { label: 'Назва',     placeholder: '' } },
 ];
 
-if (typeof module !== 'undefined') module.exports = { fi, addPay, mult, meetsReq, totalInc, totalExp, bal, fmt, fmtS, depositIncome, totalPassiveInc, hExp, UNI_SPECS, COL_SPECS, FIELDS };
+if (typeof module !== 'undefined') module.exports = { fi, addPay, mult, meetsReq, totalInc, totalExp, expBreakdown, bal, fmt, fmtS, depositIncome, totalPassiveInc, hExp, UNI_SPECS, COL_SPECS, FIELDS };

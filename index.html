@@ -753,10 +753,28 @@
       <span class="settle-mono" id="settle-cash-after">$0</span>
     </div>
   </div>
+  <div id="settle-shortfall-block" class="hidden" style="background:var(--elev);border-radius:12px;padding:13px 16px;margin:12px 0">
+    <div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">Розподіл нестачі</div>
+    <div class="settle-row"><span>Базові витрати:</span><span class="settle-mono" id="settle-sf-base">$0</span></div>
+    <div class="settle-row"><span>% Банк:</span><span class="settle-mono" id="settle-sf-bankdue">$0</span></div>
+    <div class="settle-row"><span>% МКО:</span><span class="settle-mono" id="settle-sf-microdue">$0</span></div>
+    <div class="settle-divider"></div>
+    <div class="settle-row"><span>Списано готівки:</span><span class="settle-mono" id="settle-sf-cash">$0</span></div>
+    <div class="settle-row"><span>У тіло Банк:</span><span class="settle-mono red" id="settle-sf-tobank">+$0</span></div>
+    <div class="settle-row"><span>У тіло МКО:</span><span class="settle-mono red" id="settle-sf-tomicro">+$0</span></div>
+  </div>
+  <div id="settle-no-credit" style="display:none;color:var(--red);font-size:14px;font-weight:600;text-align:center;padding:8px 0">❌ Кредитні ліміти вичерпано — спочатку погаси частину боргу</div>
   <button class="btn-settle" id="settle-confirm-btn" onclick="confirmSettlement()">
     Отримати +$0
   </button>
+  <button onclick="cancelSettlement()" style="width:100%;padding:12px;background:transparent;border:none;color:rgba(255,255,255,0.35);font-family:var(--body);font-size:12px;cursor:pointer;margin-top:4px">Скасувати — повернутися до гри</button>
 </div>
+
+<!-- ══ SETTLEMENT RE-ENTRY BUTTON ══ -->
+<button id="settle-reopen-btn" class="hidden" onclick="showSettlementModal()"
+        style="position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:500;padding:10px 20px;border-radius:999px;border:none;background:linear-gradient(180deg,#7c1d1d,#5a1010);color:#fff;font-family:var(--body);font-weight:700;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,0.4);cursor:pointer">
+  🏁 Завершити раунд
+</button>
 
 <!-- ══ DEBT MODAL ══ -->
 <div class="modal-overlay-bottom hidden" id="m-debt">
@@ -913,11 +931,14 @@ let _currentCell    = null;
 let _lastPlayerData = null;
 
 // Settlement + Debt state
-let _settlementPending    = false;
-let _lastSettlementRollTs = null;
-let _settlementRound      = 1;
-let _debtContext          = 'settlement';
-let _fullTransactionAmount = 0;
+let _settlementPending       = false;
+let _lastSettlementRollTs    = null;
+let _settlementRound         = 1;
+let _lastSettlementShortfall = null;
+let _debtContext             = null; // 'course_payment' only — settlement has its own dedicated flow
+let _fullTransactionAmount   = 0;
+let _debtCancelCallback      = null;
+let _lastSharedCard          = null;
 
 const CARD_CHOICES = {
   dela: [
@@ -1636,71 +1657,166 @@ function _renderTab4(p) {
 }
 
 // ── Settlement ────────────────────────────────────────────────
+// Pure port of cashflow-ua's computeShortfallDistribution: income pays base
+// expenses + bank interest first, then micro interest; cash covers what's
+// left in the same order; any remaining base/bank-interest overflow borrows
+// from the bank up to its cap, spillover plus all unpaid micro interest are
+// capitalized straight into the micro loan's principal (never just "paid").
+function computeSettlementShortfall(p, breakdown, income, cash) {
+  const loans = p.loans || {};
+  const expenseNeed = breakdown.base + breakdown.bankDue;
+  const microNeed    = breakdown.microDue;
+
+  let incomeLeft = income;
+  const incomeToExpense = Math.min(incomeLeft, expenseNeed);
+  incomeLeft -= incomeToExpense;
+  const expenseAfterIncome = expenseNeed - incomeToExpense;
+  const incomeToMicro = Math.min(incomeLeft, microNeed);
+  incomeLeft -= incomeToMicro;
+  const microAfterIncome = microNeed - incomeToMicro;
+
+  let cashLeft = cash;
+  const cashToExpense = Math.min(cashLeft, expenseAfterIncome);
+  cashLeft -= cashToExpense;
+  const expenseAfterCash = expenseAfterIncome - cashToExpense;
+  const cashToMicro = Math.min(cashLeft, microAfterIncome);
+  cashLeft -= cashToMicro;
+  const microAfterCash = microAfterIncome - cashToMicro;
+
+  const bankAvailable = Math.max(0, LOAN_LIMITS.bank - (loans.bankRem || 0));
+  const toBankLoan = Math.min(expenseAfterCash, bankAvailable);
+  const bankOverflow = expenseAfterCash - toBankLoan;
+
+  const toMicroLoan = microAfterCash + bankOverflow;
+  const microAvailable = Math.max(0, LOAN_LIMITS.micro - (loans.microRem || 0));
+  const isBankrupt = toMicroLoan > microAvailable;
+
+  return { cashUsed: cashToExpense + cashToMicro, toBankLoan, toMicroLoan, isBankrupt };
+}
+
 function showSettlementModal() {
   const p = _lastPlayerData || {};
-  const income  = Math.round(totalInc(p));
-  const expense = Math.round(totalExp(p));
-  const balance = Math.round(bal(p));
-  const cash    = Math.round(p.cash || 0);
-  const cashAfter = cash + balance;
-  const round   = p.round || 1;
+  const income     = Math.round(totalInc(p));
+  const breakdown  = expBreakdown(p);
+  const cash       = Math.round(p.cash || 0);
+  const round      = p.round || 1;
   _settlementRound = round;
+
+  const isSimple = (cash + income) >= breakdown.total;
+  const balance  = income - breakdown.total;
 
   document.getElementById('settle-round').textContent = `Коло ${round} → ${round + 1}`;
   document.getElementById('settle-income').textContent  = '+$' + _fmtN(income);
-  document.getElementById('settle-expense').textContent = '-$' + _fmtN(expense);
+  document.getElementById('settle-expense').textContent = '-$' + _fmtN(Math.round(breakdown.total));
 
   const saldoEl = document.getElementById('settle-saldo');
-  saldoEl.textContent  = (balance >= 0 ? '+$' : '-$') + _fmtN(Math.abs(balance));
-  saldoEl.style.color  = balance >= 0 ? 'var(--green)' : 'var(--red)';
+  saldoEl.textContent = (balance >= 0 ? '+$' : '-$') + _fmtN(Math.abs(Math.round(balance)));
+  saldoEl.style.color = balance >= 0 ? 'var(--green)' : 'var(--red)';
 
   document.getElementById('settle-cash-before').textContent = '$' + _fmtN(cash);
 
-  const afterEl = document.getElementById('settle-cash-after');
-  afterEl.textContent = (cashAfter >= 0 ? '$' : '-$') + _fmtN(Math.abs(cashAfter));
-  afterEl.style.color = cashAfter >= 0 ? 'var(--green)' : 'var(--red)';
-
   const btn = document.getElementById('settle-confirm-btn');
-  if (balance >= 0) {
-    btn.textContent = `Отримати +$${_fmtN(balance)}`;
-    btn.style.background = 'linear-gradient(180deg, #1f5c3a, #144028)';
-    btn.style.color      = '#4ade80';
-    btn.style.boxShadow  = '0 4px 20px rgba(34,197,94,0.3)';
-  } else if (cashAfter >= 0) {
-    btn.textContent = `Сплатити $${_fmtN(Math.abs(balance))}`;
-    btn.style.background = 'linear-gradient(180deg, #2d4a8a, #1e3570)';
-    btn.style.color      = '#fff';
-    btn.style.boxShadow  = '';
+  const shortfallBlock = document.getElementById('settle-shortfall-block');
+  const noCreditEl     = document.getElementById('settle-no-credit');
+  const afterEl        = document.getElementById('settle-cash-after');
+
+  if (isSimple) {
+    const cashAfter = cash + balance;
+    afterEl.textContent = '$' + _fmtN(Math.round(cashAfter));
+    afterEl.style.color = 'var(--green)';
+    shortfallBlock.classList.add('hidden');
+    noCreditEl.style.display = 'none';
+    btn.disabled = false;
+    btn.onclick  = confirmSettlement;
+    if (balance >= 0) {
+      btn.textContent = `Отримати +$${_fmtN(Math.round(balance))}`;
+      btn.style.background = 'linear-gradient(180deg, #1f5c3a, #144028)';
+      btn.style.color      = '#4ade80';
+      btn.style.boxShadow  = '0 4px 20px rgba(34,197,94,0.3)';
+    } else {
+      btn.textContent = `Сплатити $${_fmtN(Math.abs(Math.round(balance)))}`;
+      btn.style.background = 'linear-gradient(180deg, #2d4a8a, #1e3570)';
+      btn.style.color      = '#fff';
+      btn.style.boxShadow  = '';
+    }
   } else {
-    btn.textContent = `Сплатити та взяти позику`;
-    btn.style.background = 'linear-gradient(180deg, #7c1d1d, #5a1010)';
-    btn.style.color      = '#fff';
-    btn.style.boxShadow  = '';
+    const sf = computeSettlementShortfall(p, breakdown, income, cash);
+    _lastSettlementShortfall = sf;
+    afterEl.textContent = '$0';
+    afterEl.style.color = 'var(--red)';
+
+    document.getElementById('settle-sf-base').textContent     = '$' + _fmtN(Math.round(breakdown.base));
+    document.getElementById('settle-sf-bankdue').textContent  = '$' + _fmtN(Math.round(breakdown.bankDue));
+    document.getElementById('settle-sf-microdue').textContent = '$' + _fmtN(Math.round(breakdown.microDue));
+    document.getElementById('settle-sf-cash').textContent     = '$' + _fmtN(Math.round(sf.cashUsed));
+    document.getElementById('settle-sf-tobank').textContent   = '+$' + _fmtN(Math.round(sf.toBankLoan));
+    document.getElementById('settle-sf-tomicro').textContent  = '+$' + _fmtN(Math.round(sf.toMicroLoan));
+    shortfallBlock.classList.remove('hidden');
+
+    btn.onclick = confirmSettlementShortfall;
+    if (sf.isBankrupt) {
+      noCreditEl.style.display = 'block';
+      btn.disabled = true;
+      btn.textContent = 'Недостатньо кредитних лімітів';
+      btn.style.background = 'var(--elev)';
+      btn.style.color      = 'rgba(255,255,255,0.3)';
+      btn.style.boxShadow  = '';
+    } else {
+      noCreditEl.style.display = 'none';
+      btn.disabled = false;
+      btn.textContent = 'Прийняти';
+      btn.style.background = 'linear-gradient(180deg, #7c1d1d, #5a1010)';
+      btn.style.color      = '#fff';
+      btn.style.boxShadow  = '';
+    }
   }
 
+  document.getElementById('settle-reopen-btn').classList.add('hidden');
   document.getElementById('settlement-modal').classList.remove('hidden');
 }
 
 async function confirmSettlement() {
   const p = _lastPlayerData || {};
-  const balance   = Math.round(bal(p));
+  const income    = Math.round(totalInc(p));
+  const breakdown = expBreakdown(p);
   const cash      = Math.round(p.cash || 0);
-  const cashAfter = cash + balance;
+  const cashAfter = cash + income - Math.round(breakdown.total);
 
-  if (cashAfter >= 0) {
-    await window._fbUpdate(
-      window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
-      { cash: cashAfter, round: _settlementRound + 1 }
-    );
-    document.getElementById('settlement-modal').classList.add('hidden');
-    _settlementPending = false;
-    _proceedAfterSettlement();
-  } else {
-    _debtContext = 'settlement';
-    _fullTransactionAmount = Math.abs(balance);
-    document.getElementById('settlement-modal').classList.add('hidden');
-    openDebtModal();
-  }
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { cash: cashAfter, round: _settlementRound + 1 }
+  );
+  document.getElementById('settlement-modal').classList.add('hidden');
+  _settlementPending = false;
+  _proceedAfterSettlement();
+}
+
+async function confirmSettlementShortfall() {
+  const p  = _lastPlayerData || {};
+  const sf = _lastSettlementShortfall;
+  if (!sf || sf.isBankrupt) return;
+  const loans = p.loans || {};
+
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    {
+      cash: 0,
+      loans: {
+        bankRem:  (loans.bankRem  || 0) + sf.toBankLoan,
+        microRem: (loans.microRem || 0) + sf.toMicroLoan,
+      },
+      round: _settlementRound + 1,
+    }
+  );
+  document.getElementById('settlement-modal').classList.add('hidden');
+  _settlementPending = false;
+  _lastSettlementShortfall = null;
+  _proceedAfterSettlement();
+}
+
+function cancelSettlement() {
+  document.getElementById('settlement-modal').classList.add('hidden');
+  document.getElementById('settle-reopen-btn').classList.toggle('hidden', !_settlementPending);
 }
 
 function _proceedAfterSettlement() {
@@ -1744,11 +1860,17 @@ function updateDebtAmounts(useCash) {
   _updateDebtButtons(loanNeeded);
 }
 
+// Bank loans are only for essential/unavoidable spending; everything else
+// (courses, deals, startups, inventory) is MKO-only. Only one context exists
+// today — future self/startup/deal payment contexts get added here.
+const DEBT_BANK_ELIGIBLE = { course_payment: false };
+
 function _updateDebtButtons(loanNeeded) {
   const p = _lastPlayerData || {};
   const loans      = p.loans || {};
-  const bankAvail  = Math.max(0, 3000  - (loans.bankRem  || 0));
-  const microAvail = Math.max(0, 30000 - (loans.microRem || 0));
+  const allowBank  = DEBT_BANK_ELIGIBLE[_debtContext] === true;
+  const bankAvail  = allowBank ? Math.max(0, LOAN_LIMITS.bank  - (loans.bankRem  || 0)) : 0;
+  const microAvail = Math.max(0, LOAN_LIMITS.micro - (loans.microRem || 0));
   const bankBtn  = document.getElementById('debt-bank-btn');
   const microBtn = document.getElementById('debt-micro-btn');
   const noCredit = document.getElementById('debt-no-credit');
@@ -1786,6 +1908,8 @@ function onDebtCashToggle(useCash) {
 }
 
 async function confirmDebt(source) {
+  if (source === 'bank' && DEBT_BANK_ELIGIBLE[_debtContext] !== true) return;
+
   const p = _lastPlayerData || {};
   const loans   = p.loans || {};
   const useCash = document.getElementById('debt-use-cash')?.checked ?? true;
@@ -1799,10 +1923,10 @@ async function confirmDebt(source) {
   let newMicroRem = loans.microRem || 0;
 
   if (source === 'bank') {
-    const bankAvail = Math.max(0, 3000 - newBankRem);
+    const bankAvail = Math.max(0, LOAN_LIMITS.bank - newBankRem);
     if (loanNeeded > bankAvail) {
       const microNeeded = loanNeeded - bankAvail;
-      const microAvail  = Math.max(0, 30000 - newMicroRem);
+      const microAvail  = Math.max(0, LOAN_LIMITS.micro - newMicroRem);
       if (microNeeded > microAvail) {
         alert(`Не вистачає ліміту. Потрібно: $${_fmtN(loanNeeded)}, доступно: $${_fmtN(bankAvail + microAvail)}`);
         return;
@@ -1813,7 +1937,7 @@ async function confirmDebt(source) {
       newBankRem += loanNeeded;
     }
   } else {
-    const microAvail = Math.max(0, 30000 - newMicroRem);
+    const microAvail = Math.max(0, LOAN_LIMITS.micro - newMicroRem);
     if (loanNeeded > microAvail) {
       alert(`Перевищено ліміт МКО. Доступно: $${_fmtN(microAvail)}`);
       return;
@@ -1834,18 +1958,18 @@ async function confirmDebt(source) {
 
 function cancelDebt() {
   _fullTransactionAmount = 0;
-  _debtContext = 'settlement';
   document.getElementById('m-debt').classList.add('hidden');
+  const cb = _debtCancelCallback;
+  _debtCancelCallback = null;
+  if (cb) cb();
 }
 
 async function afterDebtResolved() {
-  if (_debtContext === 'settlement') {
-    await window._fbUpdate(
-      window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
-      { round: _settlementRound + 1 }
-    );
-    _settlementPending = false;
-    _proceedAfterSettlement();
+  if (_debtContext === 'course_payment') {
+    _sharedCardDecided = true;
+    await window._fbSharedCardDecision(_db, _sessionId, _myPlayerKey, 'accept');
+    document.getElementById('shared-waiting-msg').classList.remove('hidden');
+    document.getElementById('shared-vote-row').classList.add('hidden');
   }
 }
 
@@ -1984,6 +2108,7 @@ function handleSharedCardUpdate(sc) {
     modal.classList.add('hidden');
     _sharedCardDecided = false;
     _sharedCardAcked   = false;
+    _lastSharedCard    = null;
     return;
   }
   modal.classList.remove('hidden');
@@ -1995,6 +2120,7 @@ function handleSharedCardUpdate(sc) {
 }
 
 function renderSharedFront(sc) {
+  _lastSharedCard = sc;
   document.getElementById('shared-card-render').innerHTML =
     window.renderCardHTML(sc.card, sc.cardType, { hideEffect: true, state: _lastPlayerData });
   document.getElementById('shared-card-front-ui').classList.remove('hidden');
@@ -2022,6 +2148,32 @@ function renderSharedBack(sc) {
 
 async function sharedCardVote(decision) {
   if (_sharedCardDecided) return;
+
+  if (decision === 'accept') {
+    const cost = parseFloat(_lastSharedCard?.card?.cost) || 0;
+    const p    = _lastPlayerData || {};
+    const cash = Math.round(p.cash || 0);
+
+    if (cost > cash) {
+      // Insufficient cash: run the debt modal (MKO-only) before sending any
+      // decision. afterDebtResolved() sends the accept vote once the loan
+      // is registered — mirrors SKILL_debt_modal.md: confirmDebt() does the
+      // whole cash+loan transaction, nothing here deducts cost a second time.
+      _debtContext = 'course_payment';
+      _fullTransactionAmount = cost;
+      _debtCancelCallback = null; // nothing to undo — player can just vote again
+      openDebtModal();
+      return;
+    }
+
+    if (cost > 0) {
+      await window._fbUpdate(
+        window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+        { cash: cash - cost }
+      );
+    }
+  }
+
   _sharedCardDecided = true;
   await window._fbSharedCardDecision(_db, _sessionId, _myPlayerKey, decision);
   const waitMsg  = document.getElementById('shared-waiting-msg');

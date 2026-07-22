@@ -331,9 +331,11 @@ window._fbClearSharedCard = async (db, sessionId) => {
 const LICENSE_GRANTS = { driving: ['A', 'B', 'C', 'D'], driver_B: ['B'] };
 
 // Applies each player's accept/decline vote on a shared course/training card
-// into their persisted profile (courses[]/trainings[], cash, licenses), then
-// clears the shared-card node. Players who declined, or who already own the
-// card, are left untouched.
+// into their persisted profile (courses[]/trainings[], licenses), then clears
+// the shared-card node. Players who declined, or who already own the card,
+// are left untouched. Cash is NOT touched here — it's deducted client-side at
+// vote time (sharedCardVote in index.html), either directly or via the debt
+// modal, so deducting it again here would double-charge the player.
 window._fbFinalizeSharedCard = async (db, sessionId, cardType, card, decisions, players) => {
   const arrKey = cardType === 'course' ? 'courses' : 'trainings';
   for (const [playerKey, decision] of Object.entries(decisions || {})) {
@@ -345,7 +347,6 @@ window._fbFinalizeSharedCard = async (db, sessionId, cardType, card, decisions, 
 
     const update = {
       [arrKey]: [...existing, card],
-      cash: (parseFloat(p.cash) || 0) - (parseFloat(card.cost) || 0),
     };
     if (cardType === 'course' && LICENSE_GRANTS[card.id]) {
       update.licenses = [...new Set([...(p.licenses || []), ...LICENSE_GRANTS[card.id]])];
