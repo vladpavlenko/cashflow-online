@@ -940,11 +940,12 @@ let _settlementPending       = false;
 let _lastSettlementRollTs    = null;
 let _settlementRound         = 1;
 let _lastSettlementShortfall = null;
-let _debtContext             = null; // 'course_payment' | 'self_job' — settlement has its own dedicated flow
+let _debtContext             = null; // 'course_payment' | 'self_job' | 'startup_purchase' — settlement has its own dedicated flow
 let _fullTransactionAmount   = 0;
 let _debtCancelCallback      = null;
 let _lastSharedCard          = null;
 let _pendingSelfJob          = null; // { incomes, inventory } staged while the debt modal resolves
+let _pendingStartup          = null; // { incomes } staged while the debt modal resolves
 
 const CARD_CHOICES = {
   dela: [
@@ -1348,11 +1349,64 @@ async function applyAcceptedSelfJob(card) {
   return true;
 }
 
+// random_income cards just hand the player cash — no requirements block,
+// no debt path (nothing is being spent).
+async function applyAcceptedRandomIncome(card) {
+  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+  const p    = snap.val() || {};
+  const cash = Math.round(p.cash || 0) + (parseFloat(card.pay) || 0);
+  await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), { cash });
+}
+
+// Startups are unlimited passive-income sources (unlike emp/self jobs, no
+// activeIncomeCount cap applies). Entry cost is card.acquirePrice, unless
+// card.freeCondition is satisfied (checked via engine.js's meetsReq — only
+// works when freeCondition is phrased as a real req string like "course: x"
+// / "training: x"; free-text conditions just don't match and the normal
+// price applies). incomeType 'one_time' pays out immediately instead of
+// creating a recurring passive income. Insufficient cash routes through the
+// debt modal (MKO-only, 'startup_purchase' context), same pattern as
+// applyAcceptedSelfJob. Returns true if applied immediately, false if the
+// debt modal took over (caller must not send the decision yet).
+async function applyAcceptedStartup(card) {
+  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+  const p    = snap.val() || {};
+
+  const isFree = !!(card.freeCondition && typeof meetsReq === 'function' && meetsReq(p, card.freeCondition));
+  const cost   = isFree ? 0 : (parseFloat(card.acquirePrice) || 0);
+  const cash   = Math.round(p.cash || 0);
+  const income = parseFloat(card.income) || 0;
+  const isOneTime = card.incomeType === 'one_time';
+
+  const incomes = isOneTime
+    ? (p.incomes || [])
+    : [...(p.incomes || []), { id: 'i' + Date.now(), type: 'passive', name: card.name, basePay: income }];
+
+  if (cost > cash) {
+    _debtContext = 'startup_purchase';
+    _fullTransactionAmount = cost;
+    _debtCancelCallback = null; // nothing to undo — player can just decide again
+    _pendingStartup = { incomes, oneTimeIncome: isOneTime ? income : 0 };
+    openDebtModal();
+    return false;
+  }
+
+  const update = { incomes };
+  update.cash = cash - cost + (isOneTime ? income : 0);
+  await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), update);
+  return true;
+}
+
 async function decide(decision) {
   if (decision === 'accept' && _decidingCardType === 'emp' && _decidingCard) {
     await applyAcceptedEmployeeJob(_decidingCard);
   } else if (decision === 'accept' && _decidingCardType === 'self' && _decidingCard) {
     const applied = await applyAcceptedSelfJob(_decidingCard);
+    if (!applied) return; // debt modal took over; afterDebtResolved finishes this
+  } else if (decision === 'accept' && _decidingCardType === 'random' && _decidingCard) {
+    await applyAcceptedRandomIncome(_decidingCard);
+  } else if (decision === 'accept' && _decidingCardType === 'startup' && _decidingCard) {
+    const applied = await applyAcceptedStartup(_decidingCard);
     if (!applied) return; // debt modal took over; afterDebtResolved finishes this
   }
   _decided = true;
@@ -1916,7 +1970,7 @@ function updateDebtAmounts(useCash) {
 
 // Bank loans are only for essential/unavoidable spending; everything else
 // (courses, deals, startups, inventory) is MKO-only.
-const DEBT_BANK_ELIGIBLE = { course_payment: false, self_job: false };
+const DEBT_BANK_ELIGIBLE = { course_payment: false, self_job: false, startup_purchase: false };
 
 function _updateDebtButtons(loanNeeded) {
   const p = _lastPlayerData || {};
@@ -2033,6 +2087,25 @@ async function afterDebtResolved() {
         { incomes: _pendingSelfJob.incomes, inventory: _pendingSelfJob.inventory }
       );
       _pendingSelfJob = null;
+    }
+    _decided = true;
+    await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, 'accept');
+    document.getElementById('card-actions').classList.add('hidden');
+    document.getElementById('card-decided').classList.remove('hidden');
+    document.getElementById('decided-text').textContent = '✅ Ти прийняв';
+  } else if (_debtContext === 'startup_purchase') {
+    // confirmDebt already deducted the entry cost and registered the loan —
+    // this applies the staged passive income (or, for a one_time startup,
+    // pays out its lump sum), then sends the accept decision.
+    if (_pendingStartup) {
+      const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+      const p    = snap.val() || {};
+      const update = { incomes: _pendingStartup.incomes };
+      if (_pendingStartup.oneTimeIncome > 0) {
+        update.cash = Math.round(p.cash || 0) + _pendingStartup.oneTimeIncome;
+      }
+      await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), update);
+      _pendingStartup = null;
     }
     _decided = true;
     await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, 'accept');

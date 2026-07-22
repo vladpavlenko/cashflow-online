@@ -276,6 +276,19 @@ function reqHtmlFor(card, opts, wrap) {
   return wrap(prefix + escapeHtml(list.map(reqLabel).join(', ')));
 }
 
+// Renders the startup "Безкоштовно якщо:" line. freeCondition is free text in
+// most cards_data.js entries (e.g. "если умеете делать сайты...") and only
+// sometimes a real meetsReq string ("course: x" / "training: x") — meetsReq
+// just returns false for the unparseable free-text ones, so the ✅/⚠️ prefix
+// only lights up green for the entries actually written in req syntax.
+function freeConditionHtmlFor(card, opts, wrap) {
+  if (!card.freeCondition) return '';
+  const prefix = opts.state && typeof meetsReq === 'function'
+    ? (meetsReq(opts.state, card.freeCondition) ? '✅ ' : '⚠️ ')
+    : '';
+  return wrap(prefix + escapeHtml(reqLabel(card.freeCondition) || String(card.freeCondition)));
+}
+
 // Renders a card using the new layout: TEXT (main) + side image + structured fields.
 // opts.hideEffect = true  → hide card.effect (training front side before vote reveal)
 window.renderCardHTML = function(card, cardType, opts) {
@@ -313,11 +326,17 @@ window.renderCardHTML = function(card, cardType, opts) {
   // Cost is shown even on the hidden front — the price is known before buying.
   const extra = [];
   if (card.cost !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вартість:</span><span class="cf-value cf-money">$${card.cost}</span></div>`);
+  if (cardType === 'startup' && card.acquirePrice !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вхід:</span><span class="cf-value cf-money">$${card.acquirePrice.toLocaleString()}</span></div>`);
   if (!opts.hideEffect) {
     if (card.amount !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Виплата:</span><span class="cf-value cf-money">+$${card.amount}</span></div>`);
     if (card.invest !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вкладення:</span><span class="cf-value cf-money">$${card.invest}</span></div>`);
     if (card.pct && card.invest)   extra.push(`<div class="card-field"><span class="cf-label">Пасив. дохід:</span><span class="cf-value cf-money">$${Math.round(card.invest * card.pct)}/міс</span></div>`);
     if (card.mult && card.invest)  extra.push(`<div class="card-field"><span class="cf-label">Прибуток:</span><span class="cf-value cf-money">+$${Math.round(card.invest * card.mult)}</span></div>`);
+    if (cardType === 'startup' && card.income !== undefined) {
+      const oneTime = card.incomeType === 'one_time';
+      extra.push(`<div class="card-field"><span class="cf-label">${oneTime ? 'Виплата' : 'Пасив. дохід'}:</span><span class="cf-value cf-money">+$${card.income.toLocaleString()}${oneTime ? '' : '/міс'}</span></div>`);
+    }
+    if (cardType === 'startup') extra.push(freeConditionHtmlFor(card, opts, v => `<div class="card-field"><span class="cf-label">Безкоштовно якщо:</span><span class="cf-value">${v}</span></div>`));
     if (card.term !== undefined)   extra.push(`<div class="card-field"><span class="cf-label">Термін:</span><span class="cf-value">${card.term} міс.</span></div>`);
     if (card.field !== undefined)  extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.field)}</span></div>`);
     if (cardType === 'self' && card.industry) extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.industry)}</span></div>`);
@@ -377,15 +396,21 @@ window.renderPhysicalCardHTML = function(card, cardType, opts) {
   if (isFlatMoneyBonus(card.bonus)) rows += r('Бонус:', card.bonus);
   if (card.amount !== undefined) rows += r('Виплата:', `+$${card.amount}`);
   if (card.cost   !== undefined) rows += r('Вартість:', `$${card.cost}`);
+  if (cardType === 'startup' && card.acquirePrice !== undefined) rows += r('Вхід:', `$${card.acquirePrice}`);
   if (card.invest !== undefined) rows += r('Вкладення:', `$${card.invest}`);
   if (card.pct && card.invest)   rows += r('Пасив. дохід:', `$${Math.round(card.invest * card.pct)}/міс`);
   if (card.mult && card.invest)  rows += r('Прибуток:', `+$${Math.round(card.invest * card.mult)}`);
+  if (cardType === 'startup' && card.income !== undefined) {
+    const oneTime = card.incomeType === 'one_time';
+    rows += r(oneTime ? 'Виплата:' : 'Пасив. дохід:', `+$${card.income}${oneTime ? '' : '/міс'}`);
+  }
   if (card.term   !== undefined) rows += r('Термін:', `${card.term} міс.`);
   if (card.field  !== undefined) rows += r('Сфера:', card.field);
   if (cardType === 'self' && card.industry)       rows += r('Сфера:', card.industry);
   if (cardType === 'self' && card.additionalCost) rows += r('Докупити:', card.additionalCost);
 
-  const reqHtml = reqHtmlFor(card, opts, v => `<div class="pcard-req">Вимоги: ${v}</div>`);
+  const reqHtml = reqHtmlFor(card, opts, v => `<div class="pcard-req">Вимоги: ${v}</div>`)
+    + (cardType === 'startup' ? freeConditionHtmlFor(card, opts, v => `<div class="pcard-req">Безкоштовно якщо: ${v}</div>`) : '');
 
   let effectHtml = '';
   if (opts.hideEffect) {
