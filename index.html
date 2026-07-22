@@ -699,6 +699,11 @@
       <div id="t4-licenses"></div>
     </div>
 
+    <div class="section-card">
+      <div class="section-label">Інвентар</div>
+      <div id="t4-inventory"></div>
+    </div>
+
   </div><!-- /tab-skills -->
 
   <!-- ── Bottom tab bar ── -->
@@ -935,10 +940,11 @@ let _settlementPending       = false;
 let _lastSettlementRollTs    = null;
 let _settlementRound         = 1;
 let _lastSettlementShortfall = null;
-let _debtContext             = null; // 'course_payment' only — settlement has its own dedicated flow
+let _debtContext             = null; // 'course_payment' | 'self_job' — settlement has its own dedicated flow
 let _fullTransactionAmount   = 0;
 let _debtCancelCallback      = null;
 let _lastSharedCard          = null;
+let _pendingSelfJob          = null; // { incomes, inventory } staged while the debt modal resolves
 
 const CARD_CHOICES = {
   dela: [
@@ -1267,7 +1273,7 @@ function showCard(card, cardType) {
     </div>`;
 
   const autoTypes = ['uvolen','lyubov','rebenok','poluchka','expense'];
-  const incomeCapped = cardType === 'emp' && activeIncomeCount(_lastPlayerData) >= 2;
+  const incomeCapped = (cardType === 'emp' || cardType === 'self') && activeIncomeCount(_lastPlayerData) >= 2;
 
   if (autoTypes.includes(cardType) || incomeCapped) {
     document.getElementById('card-actions').classList.add('hidden');
@@ -1305,11 +1311,51 @@ async function applyAcceptedEmployeeJob(card) {
   );
 }
 
+// Self-job cards may require buying an item (card.item/card.additionalCost)
+// before the job can be taken. If the player's inventory already has that
+// item, the cost is 0. Insufficient cash routes through the debt modal
+// (MKO-only, 'self_job' context) — mirrors sharedCardVote's course_payment
+// flow: confirmDebt does the whole cash+loan transaction, afterDebtResolved
+// only applies the staged non-cash changes. Returns true if applied
+// immediately, false if the debt modal took over (caller must not send the
+// decision yet).
+async function applyAcceptedSelfJob(card) {
+  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+  const p = snap.val() || {};
+  if (activeIncomeCount(p) >= 2) { alert('Вже 2 активні роботи — спочатку звільнись з однієї.'); return false; }
+
+  const item  = card.item || null;
+  const owned = !!(item && (p.inventory || []).includes(item));
+  const cost  = owned ? 0 : (parseFloat(card.additionalCost) || 0);
+  const cash  = Math.round(p.cash || 0);
+
+  const income    = { id: 'i' + Date.now(), type: 'self', name: card.name, basePay: parseFloat(card.pay) || 0 };
+  const incomes   = [...(p.incomes || []), income];
+  const inventory = (item && !owned) ? [...(p.inventory || []), item] : (p.inventory || []);
+
+  if (cost > cash) {
+    _debtContext = 'self_job';
+    _fullTransactionAmount = cost;
+    _debtCancelCallback = null; // nothing to undo — player can just decide again
+    _pendingSelfJob = { incomes, inventory };
+    openDebtModal();
+    return false;
+  }
+
+  const update = { incomes, inventory };
+  if (cost > 0) update.cash = cash - cost;
+  await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), update);
+  return true;
+}
+
 async function decide(decision) {
-  _decided = true;
   if (decision === 'accept' && _decidingCardType === 'emp' && _decidingCard) {
     await applyAcceptedEmployeeJob(_decidingCard);
+  } else if (decision === 'accept' && _decidingCardType === 'self' && _decidingCard) {
+    const applied = await applyAcceptedSelfJob(_decidingCard);
+    if (!applied) return; // debt modal took over; afterDebtResolved finishes this
   }
+  _decided = true;
   await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, decision);
   document.getElementById('card-actions').classList.add('hidden');
   document.getElementById('card-decided').classList.remove('hidden');
@@ -1614,6 +1660,13 @@ function _renderLicenses(p) {
   ).join('');
 }
 
+function _renderInventory(p) {
+  const items = p.inventory || [];
+  document.getElementById('t4-inventory').innerHTML = items.length
+    ? `<div class="edu-badges">${items.map(id => `<span class="edu-badge">${ITEM_LABELS[id] || id}</span>`).join('')}</div>`
+    : '<div style="color:var(--sub);font-size:13px">Інвентарю ще немає.</div>';
+}
+
 function _renderTab4(p) {
   const courses   = p.courses   || [];
   const trainings = p.trainings || [];
@@ -1654,6 +1707,7 @@ function _renderTab4(p) {
 
   _renderEducation(p);
   _renderLicenses(p);
+  _renderInventory(p);
 }
 
 // ── Settlement ────────────────────────────────────────────────
@@ -1861,9 +1915,8 @@ function updateDebtAmounts(useCash) {
 }
 
 // Bank loans are only for essential/unavoidable spending; everything else
-// (courses, deals, startups, inventory) is MKO-only. Only one context exists
-// today — future self/startup/deal payment contexts get added here.
-const DEBT_BANK_ELIGIBLE = { course_payment: false };
+// (courses, deals, startups, inventory) is MKO-only.
+const DEBT_BANK_ELIGIBLE = { course_payment: false, self_job: false };
 
 function _updateDebtButtons(loanNeeded) {
   const p = _lastPlayerData || {};
@@ -1970,6 +2023,22 @@ async function afterDebtResolved() {
     await window._fbSharedCardDecision(_db, _sessionId, _myPlayerKey, 'accept');
     document.getElementById('shared-waiting-msg').classList.remove('hidden');
     document.getElementById('shared-vote-row').classList.add('hidden');
+  } else if (_debtContext === 'self_job') {
+    // confirmDebt already deducted cash and registered the loan — this only
+    // applies the non-cash side effects (income + inventory item) staged by
+    // applyAcceptedSelfJob, then sends the accept decision.
+    if (_pendingSelfJob) {
+      await window._fbUpdate(
+        window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+        { incomes: _pendingSelfJob.incomes, inventory: _pendingSelfJob.inventory }
+      );
+      _pendingSelfJob = null;
+    }
+    _decided = true;
+    await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, 'accept');
+    document.getElementById('card-actions').classList.add('hidden');
+    document.getElementById('card-decided').classList.remove('hidden');
+    document.getElementById('decided-text').textContent = '✅ Ти прийняв';
   }
 }
 

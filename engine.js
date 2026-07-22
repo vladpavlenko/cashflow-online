@@ -34,14 +34,20 @@ function mult(state, inc) {
 
 // Parses free-text req strings from cards_data.js ("course: id", "education: id",
 // "license: id", "training: id", "experience: text", "personal: has_children"/
-// "has_partner") plus {allOf:[...]}/{anyOf:[...]} grouping and top-level arrays
-// (implicit AND). See player_progression_schema_v2.md for the id enumerations.
+// "has_partner") plus {allOf:[...]}/{anyOf:[...]} grouping, {countTrainings:{category,min}}
+// (owns at least `min` trainings whose category array includes `category`), and
+// top-level arrays (implicit AND). See player_progression_schema_v2.md for the id enumerations.
 function meetsReq(state, req) {
   if (req == null) return true;
   if (Array.isArray(req)) return req.every(r => meetsReq(state, r));
   if (typeof req === 'object') {
     if (req.allOf) return req.allOf.every(r => meetsReq(state, r));
     if (req.anyOf) return req.anyOf.some(r => meetsReq(state, r));
+    if (req.countTrainings) {
+      const { category, min } = req.countTrainings;
+      const owned = (state.trainings || []).filter(t => (t.category || []).includes(category)).length;
+      return owned >= (min || 0);
+    }
     return true;
   }
   const i = req.indexOf(':');

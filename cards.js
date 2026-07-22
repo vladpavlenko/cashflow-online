@@ -234,8 +234,25 @@ function reqLabel(r) {
   if (typeof r === 'string') return r;
   if (r && r.anyOf) return '(' + r.anyOf.map(reqLabel).join(' або ') + ')';
   if (r && r.allOf) return '(' + r.allOf.map(reqLabel).join(' і ') + ')';
+  if (r && r.countTrainings) return `${r.countTrainings.min}+ тренінгів "${r.countTrainings.category}"`;
   return '';
 }
+
+// jobs_self "item" ids (player_progression_schema_v2.md §7) → display label.
+const ITEM_LABELS = {
+  used_laptop: 'Б/у ноутбук',
+  massage_table: 'Переносний масажний стіл',
+  photo_studio_kit: 'Фотоапарат + світло + декорації',
+  pc_dual_monitor: 'Потужний ПК з двома моніторами',
+  basic_pc: 'Простенький домашній ПК',
+  handyman_tools: 'Набір інструментів "муж на час"',
+  sewing_machine: 'Швейна машинка',
+  bicycle: 'Велосипед',
+  rented_garage: 'Оренда гаража',
+  car: 'Автомобіль (б/у)',
+  scooter: 'Скутер',
+  pc_gpu_dual_monitor: 'Потужний ПК з відеокартою і двома моніторами',
+};
 
 // card.bonus on jobs_employee cards is dual-purpose text from the source data:
 // a flat "$" addition to pay ("+300$ (за слитое дизельное топливо)") that isn't
@@ -303,8 +320,13 @@ window.renderCardHTML = function(card, cardType, opts) {
     if (card.mult && card.invest)  extra.push(`<div class="card-field"><span class="cf-label">Прибуток:</span><span class="cf-value cf-money">+$${Math.round(card.invest * card.mult)}</span></div>`);
     if (card.term !== undefined)   extra.push(`<div class="card-field"><span class="cf-label">Термін:</span><span class="cf-value">${card.term} міс.</span></div>`);
     if (card.field !== undefined)  extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.field)}</span></div>`);
-    if (cardType === 'self' && card.industry)       extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.industry)}</span></div>`);
-    if (cardType === 'self' && card.additionalCost) extra.push(`<div class="card-field"><span class="cf-label">Докупити:</span><span class="cf-value cf-money">${escapeHtml(card.additionalCost)}</span></div>`);
+    if (cardType === 'self' && card.industry) extra.push(`<div class="card-field"><span class="cf-label">Сфера:</span><span class="cf-value">${escapeHtml(card.industry)}</span></div>`);
+    if (cardType === 'self' && card.additionalCost != null) {
+      const itemLabel = ITEM_LABELS[card.item] || card.item || 'Предмет';
+      const owned = !!(opts.state && card.item && (opts.state.inventory || []).includes(card.item));
+      const costText = owned ? `${itemLabel} — вже є, $0` : `${itemLabel} — $${card.additionalCost}`;
+      extra.push(`<div class="card-field"><span class="cf-label">Докупити:</span><span class="cf-value cf-money">${escapeHtml(costText)}</span></div>`);
+    }
   }
 
   const hasImage = !opts.hideEffect && card.image && card.image.length > 0;

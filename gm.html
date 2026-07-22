@@ -1073,6 +1073,11 @@ function playerCard(key, p) {
         <div class="detail-title">Ліцензії</div>
         <div class="detail-row"><span class="lft">${lic.join(', ')}</span></div>
       </div>` : ''}
+
+      ${(p.inventory || []).length ? `<div class="detail-section">
+        <div class="detail-title">Інвентар (${p.inventory.length})</div>
+        <div class="detail-row"><span class="lft">${p.inventory.map(id => ITEM_LABELS[id] || id).join(', ')}</span></div>
+      </div>` : ''}
     </div>`;
   }
 
