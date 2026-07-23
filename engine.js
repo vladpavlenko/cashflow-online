@@ -33,10 +33,18 @@ function mult(state, inc) {
 }
 
 // Parses free-text req strings from cards_data.js ("course: id", "education: id",
-// "license: id", "training: id", "experience: text", "personal: has_children"/
-// "has_partner") plus {allOf:[...]}/{anyOf:[...]} grouping, {countTrainings:{category,min}}
-// (owns at least `min` trainings whose category array includes `category`), and
-// top-level arrays (implicit AND). See player_progression_schema_v2.md for the id enumerations.
+// "license: id", "training: id", "experience: text", "active_field: text",
+// "personal: has_children"/"has_partner") plus {allOf:[...]}/{anyOf:[...]}
+// grouping, {countTrainings:{category,min}} (owns at least `min` trainings
+// whose category array includes `category`), and top-level arrays (implicit
+// AND). See player_progression_schema_v2.md for the id enumerations.
+//
+// 'active_field' differs from 'experience': both live under state.personal,
+// populated whenever an emp/self job card is accepted (see jobs_employee/
+// jobs_self "active_field" in cards_data.js), but personal.active_field is
+// DYNAMIC — the union of every currently active income's field(s), so firing
+// a job removes it — while personal.experience only ever grows and keeps
+// every field the player has ever held, forever.
 function meetsReq(state, req) {
   if (req == null) return true;
   if (Array.isArray(req)) return req.every(r => meetsReq(state, r));
@@ -58,7 +66,8 @@ function meetsReq(state, req) {
     case 'training':  return (state.trainings  || []).some(t => t.id === value);
     case 'education':  return (state.education  || []).includes(value);
     case 'license':   return (state.licenses   || []).includes(value);
-    case 'experience': return (state.experience || []).some(e => e.toLowerCase() === value.toLowerCase());
+    case 'experience': return ((state.personal && state.personal.experience) || []).some(e => e.toLowerCase() === value.toLowerCase());
+    case 'active_field': return ((state.personal && state.personal.active_field) || []).some(f => f.toLowerCase() === value.toLowerCase());
     case 'personal':
       if (value === 'has_children') return (state.kidsCount || 0) > 0;
       if (value === 'has_partner')  return !!state.hasPartner;

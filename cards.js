@@ -327,6 +327,8 @@ window.renderCardHTML = function(card, cardType, opts) {
   const extra = [];
   if (card.cost !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вартість:</span><span class="cf-value cf-money">$${card.cost}</span></div>`);
   if (cardType === 'startup' && card.acquirePrice !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вхід:</span><span class="cf-value cf-money">$${card.acquirePrice.toLocaleString()}</span></div>`);
+  if (cardType === 'deal' && card.entryPrice !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вхід:</span><span class="cf-value cf-money">$${card.entryPrice.toLocaleString()}</span></div>`);
+  if (cardType === 'deal' && card.endPayment !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вихід (через 3 кола):</span><span class="cf-value cf-money">$${card.endPayment.toLocaleString()}</span></div>`);
   if (!opts.hideEffect) {
     if (card.amount !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Виплата:</span><span class="cf-value cf-money">+$${card.amount}</span></div>`);
     if (card.invest !== undefined) extra.push(`<div class="card-field"><span class="cf-label">Вкладення:</span><span class="cf-value cf-money">$${card.invest}</span></div>`);
@@ -397,6 +399,8 @@ window.renderPhysicalCardHTML = function(card, cardType, opts) {
   if (card.amount !== undefined) rows += r('Виплата:', `+$${card.amount}`);
   if (card.cost   !== undefined) rows += r('Вартість:', `$${card.cost}`);
   if (cardType === 'startup' && card.acquirePrice !== undefined) rows += r('Вхід:', `$${card.acquirePrice}`);
+  if (cardType === 'deal' && card.entryPrice !== undefined) rows += r('Вхід:', `$${card.entryPrice}`);
+  if (cardType === 'deal' && card.endPayment !== undefined) rows += r('Вихід (через 3 кола):', `$${card.endPayment}`);
   if (card.invest !== undefined) rows += r('Вкладення:', `$${card.invest}`);
   if (card.pct && card.invest)   rows += r('Пасив. дохід:', `$${Math.round(card.invest * card.pct)}/міс`);
   if (card.mult && card.invest)  rows += r('Прибуток:', `+$${Math.round(card.invest * card.mult)}`);

@@ -219,7 +219,7 @@ window._fbJoinSession = async (db, sessionId, playerKey, playerName) => {
     education: [],
     activeStudy: null,
     licenses: [],
-    experience: [],
+    personal: { active_field: [], experience: [] },
     inventory: [],
     deals: [],
     loans:  { bankRem: 0, microRem: 0 },

@@ -253,6 +253,10 @@
       transition: opacity 0.15s;
     }
     #btn-accept:active { opacity: 0.8; }
+    #btn-accept:disabled {
+      background: var(--elev); color: var(--sub); box-shadow: none;
+      cursor: not-allowed; opacity: 0.7;
+    }
     #btn-decline {
       flex: 1; padding: 14px; border-radius: 13px;
       background: rgba(239,68,68,0.08); border: 1.5px solid rgba(239,68,68,0.28);
@@ -280,6 +284,17 @@
     }
     .income-card-row2 { font-size: 12px; color: var(--sub); margin-top: 3px; }
     .income-card-row3 { font-size: 12px; color: var(--sub); margin-top: 2px; font-family: var(--mono); }
+    .deal-card { border-bottom: 1px solid var(--bord); padding: 10px 0; }
+    .deal-card:last-child { border-bottom: none; }
+    .deal-amounts { display: flex; justify-content: space-between; font-size: 12px; color: var(--sub); margin-top: 2px; font-family: var(--mono); }
+    .deal-progress-track { height: 4px; background: var(--elev); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+    .deal-progress-fill  { height: 100%; background: var(--blue); border-radius: 3px; transition: width 0.4s; }
+    .deal-progress-fill.ready { background: var(--green); }
+    .btn-sell-deal {
+      width: 100%; margin-top: 8px; padding: 9px; border-radius: 10px;
+      background: linear-gradient(180deg, #1f5c3a, #144028); border: none;
+      color: #4ade80; font-family: var(--body); font-size: 13px; font-weight: 700; cursor: pointer;
+    }
     .totals-row {
       display: flex; justify-content: space-between;
       font-size: 13px; padding: 6px 0;
@@ -388,6 +403,8 @@
       background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);
       border-radius: 6px; padding: 4px 9px; font-size: 11px; color: var(--green);
     }
+    #t4-experience-details summary { color: var(--sub); }
+    #t4-experience-details summary::-webkit-details-marker { color: var(--sub); }
 
     /* ── Settlement Modal ── */
     #settlement-modal {
@@ -642,6 +659,13 @@
       </div>
     </div>
 
+    <div class="section-card">
+      <div class="section-label">Угоди (Купи-Продай)</div>
+      <div id="t2-deals-list">
+        <div style="color:var(--sub);font-size:14px">Угод ще немає.</div>
+      </div>
+    </div>
+
     <div class="section-card" id="t2-totals">
       <div class="totals-row"><span>Усього активних:</span><span class="mono">$0 / міс</span></div>
       <div class="totals-row"><span>Усього пасивних:</span><span class="mono">$0 / міс</span></div>
@@ -702,6 +726,13 @@
     <div class="section-card">
       <div class="section-label">Інвентар</div>
       <div id="t4-inventory"></div>
+    </div>
+
+    <div class="section-card">
+      <details id="t4-experience-details">
+        <summary class="section-label" style="cursor:pointer;display:inline-block">Досвід і сфери діяльності</summary>
+        <div id="t4-experience" style="margin-top:10px"></div>
+      </details>
     </div>
 
   </div><!-- /tab-skills -->
@@ -946,6 +977,7 @@ let _debtCancelCallback      = null;
 let _lastSharedCard          = null;
 let _pendingSelfJob          = null; // { incomes, inventory } staged while the debt modal resolves
 let _pendingStartup          = null; // { incomes } staged while the debt modal resolves
+let _pendingDeal             = null; // single deal object staged while the debt modal resolves
 
 const CARD_CHOICES = {
   dela: [
@@ -1282,6 +1314,14 @@ function showCard(card, cardType) {
     document.getElementById('decided-text').textContent = incomeCapped
       ? '❌ Вже 2 активні роботи — спочатку звільнись з однієї'
       : 'Подія застосована автоматично';
+  } else if ((cardType === 'startup' || cardType === 'deal') && typeof meetsReq === 'function' && !meetsReq(_lastPlayerData, card.req)) {
+    // req is blocking (not just informational) for startups/deals — the
+    // player must currently hold a matching active_field/experience/etc.
+    const acceptBtn = document.getElementById('btn-accept');
+    if (acceptBtn) {
+      acceptBtn.disabled = true;
+      acceptBtn.textContent = '🔒 Немає потрібної кваліфікації';
+    }
   }
 
   setState('card');
@@ -1297,6 +1337,30 @@ function _parseFlatBonusAmount(bonus) {
   return m ? parseInt(m[1], 10) : 0;
 }
 
+// card.active_field (cards_data.js) can be a single string, an array (e.g.
+// "Главврач роддома" -> ["gynecologist","doctor"]), or absent/null.
+function _flattenActiveField(af) {
+  if (Array.isArray(af)) return af.filter(Boolean);
+  return af ? [af] : [];
+}
+
+// Recomputes p.personal from a given incomes[] list. active_field is fully
+// DYNAMIC — it's the union of activeField across every currently active
+// (non-passive) income, so firing a job removes its field(s) too. experience
+// only ever grows: every active_field the player has ever held stays in
+// there forever, even after the job is gone. Called from every code path
+// that adds or removes an income (accept emp/self job, fire income).
+function _syncPersonalFields(p, incomes) {
+  const activeSet = new Set();
+  (incomes || []).forEach(inc => {
+    if (inc.type === 'passive') return;
+    _flattenActiveField(inc.activeField).forEach(f => activeSet.add(f));
+  });
+  const experienceSet = new Set((p.personal && p.personal.experience) || []);
+  activeSet.forEach(f => experienceSet.add(f));
+  return { active_field: [...activeSet], experience: [...experienceSet] };
+}
+
 async function applyAcceptedEmployeeJob(card) {
   const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
   const p = snap.val() || {};
@@ -1304,11 +1368,13 @@ async function applyAcceptedEmployeeJob(card) {
 
   const basePay = (parseFloat(card.pay) || 0) + _parseFlatBonusAmount(card.bonus);
   const income  = { id: 'i' + Date.now(), type: 'employee', name: card.name, basePay };
+  if (card.active_field) income.activeField = card.active_field;
   const incomes = [...(p.incomes || []), income];
+  const personal = _syncPersonalFields(p, incomes);
 
   await window._fbUpdate(
     window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
-    { incomes }
+    { incomes, personal }
   );
 }
 
@@ -1331,19 +1397,21 @@ async function applyAcceptedSelfJob(card) {
   const cash  = Math.round(p.cash || 0);
 
   const income    = { id: 'i' + Date.now(), type: 'self', name: card.name, basePay: parseFloat(card.pay) || 0 };
+  if (card.active_field) income.activeField = card.active_field;
   const incomes   = [...(p.incomes || []), income];
   const inventory = (item && !owned) ? [...(p.inventory || []), item] : (p.inventory || []);
+  const personal  = _syncPersonalFields(p, incomes);
 
   if (cost > cash) {
     _debtContext = 'self_job';
     _fullTransactionAmount = cost;
     _debtCancelCallback = null; // nothing to undo — player can just decide again
-    _pendingSelfJob = { incomes, inventory };
+    _pendingSelfJob = { incomes, inventory, personal };
     openDebtModal();
     return false;
   }
 
-  const update = { incomes, inventory };
+  const update = { incomes, inventory, personal };
   if (cost > 0) update.cash = cash - cost;
   await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), update);
   return true;
@@ -1397,6 +1465,38 @@ async function applyAcceptedStartup(card) {
   return true;
 }
 
+// Deals ("Купи-Продай") tie up cash for DEAL_TERM_ROUNDS rounds, then pay out
+// card.endPayment — tracked in p.deals[] and advanced once per round in
+// confirmSettlement/confirmSettlementShortfall (see below). Entry cost routes
+// through the debt modal (MKO-only, 'deal_purchase' context) same as startups.
+const DEAL_TERM_ROUNDS = 3;
+
+async function applyAcceptedDeal(card) {
+  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+  const p    = snap.val() || {};
+
+  const cost = parseFloat(card.entryPrice) || 0;
+  const cash = Math.round(p.cash || 0);
+  const deal = {
+    id: 'deal' + Date.now(), name: card.name,
+    entryPrice: cost, endPayment: parseFloat(card.endPayment) || 0,
+    roundsElapsed: 0, status: 'active',
+  };
+  const deals = [...(p.deals || []), deal];
+
+  if (cost > cash) {
+    _debtContext = 'deal_purchase';
+    _fullTransactionAmount = cost;
+    _debtCancelCallback = null; // nothing to undo — player can just decide again
+    _pendingDeal = deal;
+    openDebtModal();
+    return false;
+  }
+
+  await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), { deals, cash: cash - cost });
+  return true;
+}
+
 async function decide(decision) {
   if (decision === 'accept' && _decidingCardType === 'emp' && _decidingCard) {
     await applyAcceptedEmployeeJob(_decidingCard);
@@ -1407,6 +1507,9 @@ async function decide(decision) {
     await applyAcceptedRandomIncome(_decidingCard);
   } else if (decision === 'accept' && _decidingCardType === 'startup' && _decidingCard) {
     const applied = await applyAcceptedStartup(_decidingCard);
+    if (!applied) return; // debt modal took over; afterDebtResolved finishes this
+  } else if (decision === 'accept' && _decidingCardType === 'deal' && _decidingCard) {
+    const applied = await applyAcceptedDeal(_decidingCard);
     if (!applied) return; // debt modal took over; afterDebtResolved finishes this
   }
   _decided = true;
@@ -1422,10 +1525,27 @@ async function fireIncome(idx) {
   const inc = (_lastPlayerData?.incomes || [])[idx];
   if (!inc) return;
   if (!confirm(`Звільнитись з "${inc.name || 'роботи'}"?`)) return;
-  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}/incomes`));
-  const arr  = snap.val() ? [...snap.val()] : [];
+  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+  const p    = snap.val() || {};
+  const arr  = p.incomes ? [...p.incomes] : [];
   arr.splice(idx, 1);
-  await window._fbSet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}/incomes`), arr);
+  const personal = _syncPersonalFields(p, arr);
+  await window._fbUpdate(
+    window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
+    { incomes: arr, personal }
+  );
+}
+
+// ── Sell a completed deal ────────────────────────────────────
+async function sellDeal(idx) {
+  const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+  const p    = snap.val() || {};
+  const deals = [...(p.deals || [])];
+  const deal  = deals[idx];
+  if (!deal || deal.status !== 'ready') return;
+  const cash = Math.round(p.cash || 0) + (parseFloat(deal.endPayment) || 0);
+  deals.splice(idx, 1);
+  await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), { cash, deals });
 }
 
 // ── renderPlayerData ──────────────────────────────────────────
@@ -1533,6 +1653,32 @@ function _renderTab2(p) {
         </div>
         <div class="income-card-row2">Пасивний</div>
         <div class="income-card-row3">Базова: $${inc.basePay || inc.pay || 0}${showMult ? ` · ×${m.toFixed(2)} (бізнес)` : ''}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const deals = (p.deals || []).filter(d => d.status !== 'completed');
+  if (deals.length === 0) {
+    document.getElementById('t2-deals-list').innerHTML =
+      '<div style="color:var(--sub);font-size:14px;padding:4px 0">Угод ще немає.</div>';
+  } else {
+    document.getElementById('t2-deals-list').innerHTML = deals.map(d => {
+      const idx      = (p.deals || []).indexOf(d);
+      const isReady  = d.status === 'ready';
+      const elapsed  = Math.min(d.roundsElapsed || 0, DEAL_TERM_ROUNDS);
+      const pct      = Math.round((elapsed / DEAL_TERM_ROUNDS) * 100);
+      const progressLbl = isReady ? 'Готово до продажу' : `Коло ${elapsed} / ${DEAL_TERM_ROUNDS}`;
+      return `<div class="deal-card">
+        <div class="income-card-row1">
+          <span class="income-name">${d.name || '—'}</span>
+        </div>
+        <div class="deal-amounts">
+          <span>Вхід: −$${_fmtN(d.entryPrice || 0)}</span>
+          <span>Вихід: +$${_fmtN(d.endPayment || 0)}</span>
+        </div>
+        <div class="income-card-row2">${progressLbl}</div>
+        <div class="deal-progress-track"><div class="deal-progress-fill${isReady ? ' ready' : ''}" style="width:${pct}%"></div></div>
+        ${isReady ? `<button class="btn-sell-deal" onclick="sellDeal(${idx})">Продати за $${_fmtN(d.endPayment || 0)}</button>` : ''}
       </div>`;
     }).join('');
   }
@@ -1721,6 +1867,27 @@ function _renderInventory(p) {
     : '<div style="color:var(--sub);font-size:13px">Інвентарю ще немає.</div>';
 }
 
+// personal.active_field is DYNAMIC (only fields from currently active, non-
+// passive incomes — shrinks when a job is fired); personal.experience only
+// ever GROWS (every active_field ever held stays forever). Both are kept in
+// sync by _syncPersonalFields, called from every income accept/fire path.
+function _renderExperience(p) {
+  const personal     = p.personal || {};
+  const activeFields  = personal.active_field || [];
+  const experience    = personal.experience   || [];
+  const activeHtml = activeFields.length
+    ? `<div class="edu-badges">${activeFields.map(f => `<span class="edu-badge" style="background:rgba(34,197,94,0.14);color:var(--green);border-color:rgba(34,197,94,0.3)">${f}</span>`).join('')}</div>`
+    : '<div style="color:var(--sub);font-size:13px">Немає активних сфер діяльності.</div>';
+  const expHtml = experience.length
+    ? `<div class="edu-badges">${experience.map(f => `<span class="edu-badge">${f}</span>`).join('')}</div>`
+    : '<div style="color:var(--sub);font-size:13px">Досвіду ще немає.</div>';
+  document.getElementById('t4-experience').innerHTML = `
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--sub);margin-bottom:4px">Зараз активно</div>
+    ${activeHtml}
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--sub);margin:14px 0 4px">Весь досвід (назавжди)</div>
+    ${expHtml}`;
+}
+
 function _renderTab4(p) {
   const courses   = p.courses   || [];
   const trainings = p.trainings || [];
@@ -1762,6 +1929,7 @@ function _renderTab4(p) {
   _renderEducation(p);
   _renderLicenses(p);
   _renderInventory(p);
+  _renderExperience(p);
 }
 
 // ── Settlement ────────────────────────────────────────────────
@@ -1883,6 +2051,19 @@ function showSettlementModal() {
   document.getElementById('settlement-modal').classList.remove('hidden');
 }
 
+// Advances every 'active' deal by one round (crossing получка), flipping it
+// to 'ready' once roundsElapsed reaches DEAL_TERM_ROUNDS. Called once per
+// player-confirmed round-end settlement, alongside the round++ itself.
+function advanceDeals(deals) {
+  return (deals || []).map(d => {
+    if (d.status !== 'active') return d;
+    const roundsElapsed = (d.roundsElapsed || 0) + 1;
+    return roundsElapsed >= DEAL_TERM_ROUNDS
+      ? { ...d, roundsElapsed, status: 'ready' }
+      : { ...d, roundsElapsed };
+  });
+}
+
 async function confirmSettlement() {
   const p = _lastPlayerData || {};
   const income    = Math.round(totalInc(p));
@@ -1892,7 +2073,7 @@ async function confirmSettlement() {
 
   await window._fbUpdate(
     window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
-    { cash: cashAfter, round: _settlementRound + 1 }
+    { cash: cashAfter, round: _settlementRound + 1, deals: advanceDeals(p.deals) }
   );
   document.getElementById('settlement-modal').classList.add('hidden');
   _settlementPending = false;
@@ -1909,6 +2090,7 @@ async function confirmSettlementShortfall() {
     window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
     {
       cash: 0,
+      deals: advanceDeals(p.deals),
       loans: {
         bankRem:  (loans.bankRem  || 0) + sf.toBankLoan,
         microRem: (loans.microRem || 0) + sf.toMicroLoan,
@@ -1970,7 +2152,7 @@ function updateDebtAmounts(useCash) {
 
 // Bank loans are only for essential/unavoidable spending; everything else
 // (courses, deals, startups, inventory) is MKO-only.
-const DEBT_BANK_ELIGIBLE = { course_payment: false, self_job: false, startup_purchase: false };
+const DEBT_BANK_ELIGIBLE = { course_payment: false, self_job: false, startup_purchase: false, deal_purchase: false };
 
 function _updateDebtButtons(loanNeeded) {
   const p = _lastPlayerData || {};
@@ -2084,7 +2266,7 @@ async function afterDebtResolved() {
     if (_pendingSelfJob) {
       await window._fbUpdate(
         window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`),
-        { incomes: _pendingSelfJob.incomes, inventory: _pendingSelfJob.inventory }
+        { incomes: _pendingSelfJob.incomes, inventory: _pendingSelfJob.inventory, personal: _pendingSelfJob.personal }
       );
       _pendingSelfJob = null;
     }
@@ -2106,6 +2288,21 @@ async function afterDebtResolved() {
       }
       await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), update);
       _pendingStartup = null;
+    }
+    _decided = true;
+    await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, 'accept');
+    document.getElementById('card-actions').classList.add('hidden');
+    document.getElementById('card-decided').classList.remove('hidden');
+    document.getElementById('decided-text').textContent = '✅ Ти прийняв';
+  } else if (_debtContext === 'deal_purchase') {
+    // confirmDebt already deducted the entry cost and registered the loan —
+    // this appends the staged deal to p.deals[], then sends the accept decision.
+    if (_pendingDeal) {
+      const snap = await window._fbGet(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`));
+      const p    = snap.val() || {};
+      const deals = [...(p.deals || []), _pendingDeal];
+      await window._fbUpdate(window._fbRef(_db, `sessions/${_sessionId}/players/${_myPlayerKey}`), { deals });
+      _pendingDeal = null;
     }
     _decided = true;
     await window._fbPlayerDecision(_db, _sessionId, _myPlayerKey, 'accept');
